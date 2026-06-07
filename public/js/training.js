@@ -480,19 +480,22 @@ async function skipRest() {
 }
 
 async function timerComplete() {
-  // Save rating/note to last set
+  // Update local state immediately so bubble colors show regardless of API result
+  if (lastSetId && currentRating !== null) {
+    const ex = exercises[currentExerciseIndex];
+    const logged = loggedSets[ex.id] || [];
+    const setEntry = logged.find(s => s.id === lastSetId);
+    if (setEntry) {
+      setEntry.rating = currentRating;
+      buildSetBubbles(ex);
+    }
+  }
+
+  // Persist rating/note to server in background
   if (lastSetId && (currentRating !== null || document.getElementById('set-note')?.value?.trim())) {
     const note = document.getElementById('set-note')?.value?.trim() || null;
     try {
       await API.put(`/api/workout-sets/${lastSetId}`, { rating: currentRating, note });
-      // Update local state with rating so bubble can reflect color
-      const ex = exercises[currentExerciseIndex];
-      const logged = loggedSets[ex.id] || [];
-      const setEntry = logged.find(s => s.id === lastSetId);
-      if (setEntry && currentRating !== null) {
-        setEntry.rating = currentRating;
-        buildSetBubbles(ex);
-      }
     } catch(e) { /* ignore rating save errors */ }
   }
 
