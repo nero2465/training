@@ -113,8 +113,9 @@ async function loadSessions(planId) {
     container.innerHTML = '';
 
     for (const session of sessions) {
-      const el = await createSessionElement(session);
+      const el = createSessionElement(session);
       container.appendChild(el);
+      loadSessionExercises(session.id); // fire-and-forget: element is in DOM now
     }
 
     const addBtn = document.createElement('button');
@@ -129,7 +130,7 @@ async function loadSessions(planId) {
   }
 }
 
-async function createSessionElement(session) {
+function createSessionElement(session) {
   const div = document.createElement('div');
   div.className = 'session-editor';
   div.id = `session-${session.id}`;
@@ -148,15 +149,14 @@ async function createSessionElement(session) {
       </svg>
     </div>
     <div class="session-collapsible open" id="session-body-${session.id}">
-      <div id="session-exercises-${session.id}" style="margin-bottom:8px;"></div>
+      <div id="session-exercises-${session.id}" style="margin-bottom:8px;">
+        <div class="loading" style="padding:6px;"><div class="spinner" style="width:16px;height:16px;"></div></div>
+      </div>
       <button class="btn btn-outline btn-sm btn-full" onclick="openExerciseLibrary(${session.id})">
         + Übung hinzufügen
       </button>
     </div>
   `;
-
-  // Load exercises
-  await loadSessionExercises(session.id);
 
   return div;
 }
@@ -174,9 +174,10 @@ function toggleSession(sessionId) {
 }
 
 async function loadSessionExercises(sessionId) {
-  const container = document.getElementById(`session-exercises-${sessionId}`);
   try {
     const exercises = await API.get(`/api/sessions/${sessionId}/exercises`);
+    const container = document.getElementById(`session-exercises-${sessionId}`);
+    if (!container) return;
     container.innerHTML = '';
 
     if (exercises.length === 0) {
@@ -189,7 +190,8 @@ async function loadSessionExercises(sessionId) {
       container.appendChild(el);
     });
   } catch (e) {
-    container.innerHTML = `<p class="text-danger">Fehler: ${e.message}</p>`;
+    const container = document.getElementById(`session-exercises-${sessionId}`);
+    if (container) container.innerHTML = `<p class="text-danger">Fehler: ${e.message}</p>`;
   }
 }
 
