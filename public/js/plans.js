@@ -400,16 +400,17 @@ function renderExerciseLibrary(exercises) {
 
 async function addExerciseToSession(exerciseId) {
   if (!targetSessionId) return;
+  const sessionId = targetSessionId; // capture before closeExerciseLibrary sets it to null
 
   try {
-    await API.post(`/api/sessions/${targetSessionId}/exercises`, {
+    await API.post(`/api/sessions/${sessionId}/exercises`, {
       exercise_id: exerciseId,
       sets: 3,
       reps_min: 8,
       reps_max: 12
     });
     closeExerciseLibrary();
-    await loadSessionExercises(targetSessionId);
+    await loadSessionExercises(sessionId);
     showToast('Übung hinzugefügt', 'success');
   } catch (e) {
     showToast('Fehler: ' + e.message, 'error');
