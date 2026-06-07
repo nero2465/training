@@ -106,9 +106,10 @@ function createPlanElement(plan) {
 }
 
 async function loadSessions(planId) {
-  const container = document.getElementById(`sessions-${planId}`);
   try {
     const sessions = await API.get(`/api/plans/${planId}/sessions`);
+    const container = document.getElementById(`sessions-${planId}`);
+    if (!container) return;
     container.innerHTML = '';
 
     for (const session of sessions) {
@@ -116,7 +117,6 @@ async function loadSessions(planId) {
       container.appendChild(el);
     }
 
-    // Add session button
     const addBtn = document.createElement('button');
     addBtn.className = 'add-session-btn';
     addBtn.innerHTML = `+ Trainingseinheit hinzufügen`;
@@ -124,7 +124,8 @@ async function loadSessions(planId) {
     container.appendChild(addBtn);
 
   } catch (e) {
-    container.innerHTML = `<p class="text-danger" style="padding:8px;">Fehler: ${e.message}</p>`;
+    const container = document.getElementById(`sessions-${planId}`);
+    if (container) container.innerHTML = `<p class="text-danger" style="padding:8px;">Fehler: ${e.message}</p>`;
   }
 }
 
