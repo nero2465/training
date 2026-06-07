@@ -9,7 +9,7 @@ let currentExerciseIndex = 0;
 let currentSetNumber = 1;
 let currentWeight = 0;
 let currentReps = 8;
-let loggedSets = {}; // { sessionExerciseId: [{ set_number, weight, reps }] }
+let loggedSets = {}; // { sessionExerciseId: [{ set_number, weight, reps, id, rating }] }
 let sessionTimerInterval = null;
 let sessionSeconds = 0;
 let workoutId = null;
@@ -27,6 +27,12 @@ let restRemaining = 60;
 let restInterval = null;
 let restPaused = false;
 let restAfterLastSet = false; // if true, advance to next exercise when done
+
+// New state variables
+let currentRating = null;      // 1/2/3 selected in rest overlay
+let lastSetId = null;          // ID of last saved set, for updating rating/note
+let restMinimized = false;
+let skippedSets = {};          // { sessionExerciseId: Set of set numbers skipped }
 
 async function init() {
   // Ensure audio ctx available
@@ -66,9 +72,10 @@ async function loadExercises() {
       return;
     }
 
-    // Init logged sets
+    // Init logged sets and skipped sets
     exercises.forEach(ex => {
       loggedSets[ex.id] = [];
+      skippedSets[ex.id] = new Set();
     });
 
     // Build progress dots
@@ -111,7 +118,9 @@ async function showExercise(index) {
   }
 
   const ex = exercises[index];
-  currentSetNumber = (loggedSets[ex.id] || []).length + 1;
+  const logged = loggedSets[ex.id] || [];
+  const skipped = skippedSets[ex.id] || new Set();
+  currentSetNumber = logged.length + skipped.size + 1;
 
   // Show card
   const card = document.getElementById('current-exercise-card');
@@ -161,22 +170,37 @@ async function showExercise(index) {
 function buildSetBubbles(ex) {
   const grid = document.getElementById('sets-grid');
   const logged = loggedSets[ex.id] || [];
+  const skipped = skippedSets[ex.id] || new Set();
+  const totalCompleted = logged.length + skipped.size;
   grid.innerHTML = '';
 
   for (let i = 1; i <= ex.sets; i++) {
     const bubble = document.createElement('div');
     bubble.className = 'set-bubble';
-    bubble.textContent = i;
 
-    if (i <= logged.length) {
-      bubble.classList.add('done');
-    } else if (i === logged.length + 1) {
-      bubble.classList.add('active');
+    if (skipped.has(i)) {
+      bubble.classList.add('skipped');
+      bubble.textContent = '–';
+    } else {
+      // Determine which logged set corresponds to position i
+      // (skipped sets before i reduce the effective logged index)
+      const skippedBefore = [...skipped].filter(s => s < i).length;
+      const loggedPosition = i - skippedBefore;
+      const loggedSet = logged[loggedPosition - 1];
+
+      if (loggedSet) {
+        bubble.classList.add('done');
+        bubble.textContent = i;
+        if (loggedSet.rating === 1) bubble.classList.add('rating-1');
+        else if (loggedSet.rating === 2) bubble.classList.add('rating-2');
+        else if (loggedSet.rating === 3) bubble.classList.add('rating-3');
+      } else if (i === totalCompleted + 1) {
+        bubble.classList.add('active');
+        bubble.textContent = i;
+      } else {
+        bubble.textContent = i;
+      }
     }
-
-    bubble.addEventListener('click', () => {
-      // Click to jump to set (if already logged, do nothing; if current, fine)
-    });
 
     grid.appendChild(bubble);
   }
@@ -222,6 +246,14 @@ async function loadRecommendation(sessionExerciseId) {
   }
 }
 
+function setWeightFromInput() {
+  const input = document.getElementById('weight-display');
+  const val = parseFloat(input.value);
+  if (!isNaN(val) && val >= 0) {
+    currentWeight = Math.round(val * 10) / 10;
+  }
+}
+
 function adjustWeight(delta) {
   currentWeight = Math.max(0, Math.round((currentWeight + delta) * 10) / 10);
   updateWeightDisplay();
@@ -233,40 +265,57 @@ function adjustReps(delta) {
 }
 
 function updateWeightDisplay() {
-  const display = document.getElementById('weight-display');
-  display.textContent = currentWeight % 1 === 0 ? currentWeight : currentWeight.toFixed(1);
+  const el = document.getElementById('weight-display');
+  el.value = currentWeight % 1 === 0 ? currentWeight : currentWeight.toFixed(1);
 }
 
 function updateRepsDisplay() {
   document.getElementById('reps-display').textContent = currentReps;
 }
 
+function selectRating(rating) {
+  currentRating = rating;
+  [1, 2, 3].forEach(r => {
+    const btn = document.getElementById(`rating-${r}`);
+    if (btn) btn.classList.toggle('selected', r === rating);
+  });
+}
+
 async function logSet() {
   const btn = document.getElementById('log-set-btn');
   btn.disabled = true;
 
+  // Unlock audio on user gesture
+  const ctx = getAudioContext();
+  if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
+
   const ex = exercises[currentExerciseIndex];
   const logged = loggedSets[ex.id] || [];
-  const setNum = logged.length + 1;
+  const skipped = skippedSets[ex.id] || new Set();
+  const setNum = logged.length + skipped.size + 1;
 
   try {
     // Save to server
-    await API.post(`/api/workouts/${workoutId}/sets`, {
+    const set = await API.post(`/api/workouts/${workoutId}/sets`, {
       session_exercise_id: ex.id,
       set_number: setNum,
       weight: currentWeight,
       reps: currentReps
     });
 
-    // Save locally
-    logged.push({ set_number: setNum, weight: currentWeight, reps: currentReps });
+    // Store set ID for rating/note update after rest
+    lastSetId = set.id;
+
+    // Save locally (include id and rating for bubble coloring)
+    logged.push({ set_number: setNum, weight: currentWeight, reps: currentReps, id: set.id, rating: null });
     loggedSets[ex.id] = logged;
 
     // Update UI
     buildSetBubbles(ex);
     updateLoggedSetsList(ex);
 
-    const isLastSet = logged.length >= ex.sets;
+    const totalCompleted = logged.length + skipped.size;
+    const isLastSet = totalCompleted >= ex.sets;
 
     if (isLastSet) {
       // Last set done
@@ -276,7 +325,7 @@ async function logSet() {
     } else {
       // More sets remain
       restAfterLastSet = false;
-      currentSetNumber = logged.length + 1;
+      currentSetNumber = logged.length + skipped.size + 1;
       startRestTimer(false);
     }
 
@@ -286,10 +335,46 @@ async function logSet() {
   }
 }
 
+function skipSet() {
+  // Unlock audio on user gesture
+  const ctx = getAudioContext();
+  if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
+
+  const ex = exercises[currentExerciseIndex];
+  const logged = loggedSets[ex.id] || [];
+  if (!skippedSets[ex.id]) skippedSets[ex.id] = new Set();
+
+  const totalCompleted = logged.length + skippedSets[ex.id].size;
+  const currentSetNum = totalCompleted + 1;
+
+  skippedSets[ex.id].add(currentSetNum);
+  buildSetBubbles(ex);
+
+  const newTotal = logged.length + skippedSets[ex.id].size;
+  const isLastSet = newTotal >= ex.sets;
+
+  if (isLastSet) {
+    const nextIndex = currentExerciseIndex + 1;
+    if (nextIndex >= exercises.length) {
+      showAllDone();
+    } else {
+      showExercise(nextIndex);
+    }
+  }
+  // else: same exercise, set bubbles already updated, user continues
+}
+
 function startRestTimer(afterLastSet) {
   restAfterLastSet = afterLastSet;
   restRemaining = restDuration;
   restPaused = false;
+  restMinimized = false;
+
+  // Reset rating/note UI
+  currentRating = null;
+  [1, 2, 3].forEach(r => document.getElementById(`rating-${r}`)?.classList.remove('selected'));
+  const noteEl = document.getElementById('set-note');
+  if (noteEl) noteEl.value = '';
 
   // Show next exercise info if last set
   const nextInfo = document.getElementById('next-exercise-info');
@@ -307,6 +392,10 @@ function startRestTimer(afterLastSet) {
   document.getElementById('rest-timer-overlay').classList.remove('hidden');
   document.getElementById('rest-toggle-btn').textContent = 'Pause';
 
+  // Hide mini badge
+  const mini = document.getElementById('rest-mini');
+  if (mini) mini.style.display = 'none';
+
   updateRestDisplay();
   updateRingProgress();
 
@@ -321,10 +410,12 @@ function restTick() {
   restRemaining--;
   updateRestDisplay();
   updateRingProgress();
+  if (restMinimized) updateMiniTimer();
 
   if (restRemaining <= 0) {
     clearInterval(restInterval);
     restInterval = null;
+    if (restMinimized) restoreRestTimer();
     playTimerDone();
     timerComplete();
   }
@@ -356,24 +447,59 @@ function toggleRestTimer() {
 
 function adjustRestDuration(delta) {
   restDuration = Math.max(10, restDuration + delta);
-  // If remaining is more than new duration, cap it
-  if (restRemaining > restDuration) {
-    restRemaining = restDuration;
-  }
+  restRemaining = Math.max(1, Math.min(restDuration, restRemaining + delta));
   updateRestDisplay();
   updateRingProgress();
 }
 
-function skipRest() {
+function minimizeRestTimer() {
+  restMinimized = true;
+  document.getElementById('rest-timer-overlay').classList.add('hidden');
+  const mini = document.getElementById('rest-mini');
+  if (mini) { mini.style.display = 'flex'; updateMiniTimer(); }
+}
+
+function restoreRestTimer() {
+  restMinimized = false;
+  document.getElementById('rest-timer-overlay').classList.remove('hidden');
+  const mini = document.getElementById('rest-mini');
+  if (mini) mini.style.display = 'none';
+}
+
+function updateMiniTimer() {
+  const el = document.getElementById('rest-mini-display');
+  if (el) el.textContent = restRemaining + 's';
+}
+
+async function skipRest() {
   if (restInterval) {
     clearInterval(restInterval);
     restInterval = null;
   }
-  timerComplete();
+  await timerComplete();
 }
 
-function timerComplete() {
+async function timerComplete() {
+  // Save rating/note to last set
+  if (lastSetId && (currentRating !== null || document.getElementById('set-note')?.value?.trim())) {
+    const note = document.getElementById('set-note')?.value?.trim() || null;
+    try {
+      await API.put(`/api/workout-sets/${lastSetId}`, { rating: currentRating, note });
+      // Update local state with rating so bubble can reflect color
+      const ex = exercises[currentExerciseIndex];
+      const logged = loggedSets[ex.id] || [];
+      const setEntry = logged.find(s => s.id === lastSetId);
+      if (setEntry && currentRating !== null) {
+        setEntry.rating = currentRating;
+        buildSetBubbles(ex);
+      }
+    } catch(e) { /* ignore rating save errors */ }
+  }
+
+  restMinimized = false;
   document.getElementById('rest-timer-overlay').classList.add('hidden');
+  const mini = document.getElementById('rest-mini');
+  if (mini) mini.style.display = 'none';
 
   const ex = exercises[currentExerciseIndex];
   const btn = document.getElementById('log-set-btn');

@@ -10,7 +10,7 @@ async function seed() {
 
   console.log('Seeding database...');
 
-  // Seed exercise library
+  // Seed exercise library (legacy entries used by training plans)
   const exercises = [
     {
       name: 'Kniebeuge',
@@ -92,7 +92,535 @@ async function seed() {
   for (const exercise of exercises) {
     insertExercise.run(exercise);
   }
-  console.log(`Seeded ${exercises.length} exercises`);
+  console.log(`Seeded ${exercises.length} legacy exercises`);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Update legacy exercises with catalog metadata (old names → catalog data)
+  // ─────────────────────────────────────────────────────────────────────────
+  const legacyUpdates = [
+    {
+      oldName: 'Kniebeuge',
+      category: 'Beine',
+      secondary_muscles: 'Beinbeuger, Rückenstrecker, Bauch/Rumpf',
+      equipment: 'Langhantel, Rack',
+      frequency_note: '1-2x/Woche, 48-72h'
+    },
+    {
+      oldName: 'Bankdrücken',
+      category: 'Brust',
+      secondary_muscles: 'Trizeps, vordere Schulter, oberer Rücken',
+      equipment: 'Hantelbank, Langhantel',
+      frequency_note: '1-2x/Woche, 48-72h'
+    },
+    {
+      oldName: 'Langhantelrudern',
+      category: 'Rücken',
+      secondary_muscles: 'hintere Schulter, Bizeps, Rückenstrecker',
+      equipment: 'Langhantel',
+      frequency_note: '1-2x/Woche, 48-72h'
+    },
+    {
+      oldName: 'Leg Curl',
+      category: 'Hintere Kette',
+      secondary_muscles: 'Waden',
+      equipment: 'Hantelbank mit Leg-Curl-Anbau',
+      frequency_note: '1-2x/Woche, 48h'
+    },
+    {
+      oldName: 'SZ-Curls',
+      category: 'Arme',
+      secondary_muscles: 'Brachialis, Unterarme',
+      equipment: 'SZ-Stange',
+      frequency_note: '1-2x/Woche, 48h'
+    },
+    {
+      oldName: 'Wadenheben',
+      category: 'Waden',
+      secondary_muscles: 'Fußstabilisatoren',
+      equipment: 'Langhantel, Rack',
+      frequency_note: '2-3x/Woche, 24-48h'
+    },
+    {
+      oldName: 'Schulterdrücken',
+      category: 'Schultern',
+      secondary_muscles: 'Trizeps, oberer Rücken, Bauch/Rumpf',
+      equipment: 'Langhantel, Rack',
+      frequency_note: '1-2x/Woche, 48-72h'
+    },
+    {
+      oldName: 'Hip Thrust / Glute Bridge',
+      category: 'Hintere Kette',
+      secondary_muscles: 'Beinbeuger, Quadrizeps, Bauch/Rumpf',
+      equipment: 'Langhantel, Bank',
+      frequency_note: '1-2x/Woche, 48h'
+    },
+    {
+      oldName: 'Einarmiges Kurzhantelrudern',
+      category: 'Rücken',
+      secondary_muscles: 'hintere Schulter, Bizeps',
+      equipment: 'Hantelbank, Kurzhantel',
+      frequency_note: '1-2x/Woche, 48h'
+    },
+    {
+      oldName: 'SZ-French Press',
+      category: 'Arme',
+      secondary_muscles: 'vordere Schulter, Brust',
+      equipment: 'SZ-Stange, Hantelbank',
+      frequency_note: '1-2x/Woche, 48h'
+    },
+    {
+      oldName: 'Seitheben',
+      category: 'Schultern',
+      secondary_muscles: 'Trapez',
+      equipment: 'leichte Kurzhanteln',
+      frequency_note: '1-3x/Woche, 24-48h'
+    }
+  ];
+
+  const updateLegacy = db.prepare(`
+    UPDATE exercises SET category=?, secondary_muscles=?, equipment=?, frequency_note=?
+    WHERE name=?
+  `);
+  for (const u of legacyUpdates) {
+    updateLegacy.run(u.category, u.secondary_muscles, u.equipment, u.frequency_note, u.oldName);
+  }
+  console.log(`Updated ${legacyUpdates.length} legacy exercises with catalog metadata`);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Full exercise catalog – 47 exercises from CSV
+  // ─────────────────────────────────────────────────────────────────────────
+  const catalogExercises = [
+    // Beine
+    {
+      name: 'Langhantel-Kniebeuge',
+      muscle_groups: 'Quadrizeps, Gesäß',
+      technique_tip: 'Füße schulterbreit, Rumpf fest, Knie folgen Fußspitzen, kontrolliert absenken.',
+      category: 'Beine',
+      secondary_muscles: 'Beinbeuger, Rückenstrecker, Bauch/Rumpf',
+      equipment: 'Langhantel, Rack',
+      frequency_note: '1-2x/Woche, 48-72h'
+    },
+    {
+      name: 'Front Squat mit Langhantel',
+      muscle_groups: 'Quadrizeps',
+      technique_tip: 'Ellbogen hoch, Oberkörper aufrecht, Hantel auf vorderer Schulter.',
+      category: 'Beine',
+      secondary_muscles: 'Gesäß, oberer Rücken, Bauch/Rumpf',
+      equipment: 'Langhantel, Rack',
+      frequency_note: '1x/Woche, 48-72h'
+    },
+    {
+      name: 'Goblet Squat mit Kettlebell',
+      muscle_groups: 'Quadrizeps, Gesäß',
+      technique_tip: 'Kettlebell vor Brust, Brustkorb aufrecht, Knie nach außen.',
+      category: 'Beine',
+      secondary_muscles: 'Bauch/Rumpf, oberer Rücken',
+      equipment: 'Kettlebell',
+      frequency_note: '1-3x/Woche, 24-48h'
+    },
+    {
+      name: 'Bulgarian Split Squat',
+      muscle_groups: 'Quadrizeps, Gesäß',
+      technique_tip: 'Hinterer Fuß auf Bank, vorderer Fuß stabil, langsam absenken.',
+      category: 'Beine',
+      secondary_muscles: 'Beinbeuger, Waden, Rumpfstabilität',
+      equipment: 'Bank, Kurzhanteln optional',
+      frequency_note: '1-2x/Woche, 48-72h'
+    },
+    {
+      name: 'Zercher Squat',
+      muscle_groups: 'Quadrizeps, Gesäß',
+      technique_tip: 'Hantel in Armbeuge, Rumpf fest, aufrecht bleiben.',
+      category: 'Beine',
+      secondary_muscles: 'Bauch/Rumpf, oberer Rücken, Bizeps',
+      equipment: 'Langhantel, Rack',
+      frequency_note: '1x/Woche, 48-72h'
+    },
+    // Hintere Kette
+    {
+      name: 'Rumänisches Kreuzheben',
+      muscle_groups: 'Beinbeuger, Gesäß',
+      technique_tip: 'Knie leicht gebeugt, Hüfte weit nach hinten, Rücken neutral.',
+      category: 'Hintere Kette',
+      secondary_muscles: 'Rückenstrecker, Latissimus, Unterarme',
+      equipment: 'Langhantel oder Kurzhanteln',
+      frequency_note: '1-2x/Woche, 48-72h'
+    },
+    {
+      name: 'Langhantel-Hip-Thrust',
+      muscle_groups: 'Gesäß',
+      technique_tip: 'Schulterblätter an Bank, Füße stabil, Becken hochdrücken.',
+      category: 'Hintere Kette',
+      secondary_muscles: 'Beinbeuger, Quadrizeps, Bauch/Rumpf',
+      equipment: 'Langhantel, Bank',
+      frequency_note: '1-2x/Woche, 48h'
+    },
+    {
+      name: 'Langhantel-Glute-Bridge am Boden',
+      muscle_groups: 'Gesäß',
+      technique_tip: 'Oberer Rücken am Boden, Füße fest, Becken hochdrücken.',
+      category: 'Hintere Kette',
+      secondary_muscles: 'Beinbeuger, Bauch/Rumpf',
+      equipment: 'Langhantel, Matte',
+      frequency_note: '1-3x/Woche, 24-48h'
+    },
+    {
+      name: 'Leg Curl am Bank-Anbau',
+      muscle_groups: 'Beinbeuger',
+      technique_tip: 'Kontrolliert ausführen, oben anspannen, langsam ablassen.',
+      category: 'Hintere Kette',
+      secondary_muscles: 'Waden',
+      equipment: 'Hantelbank mit Leg-Curl-Anbau',
+      frequency_note: '1-2x/Woche, 48h'
+    },
+    {
+      name: 'Kettlebell Deadlift',
+      muscle_groups: 'Gesäß, Beinbeuger, Rückenstrecker',
+      technique_tip: 'Kettlebell zwischen Füßen, Hüfte nach hinten, kraftvoll aufrichten.',
+      category: 'Hintere Kette',
+      secondary_muscles: 'Quadrizeps, Unterarme, Rumpf',
+      equipment: 'Kettlebell',
+      frequency_note: '1-3x/Woche, 24-48h'
+    },
+    {
+      name: 'Good Morning mit Langhantel',
+      muscle_groups: 'Beinbeuger, Rückenstrecker, Gesäß',
+      technique_tip: 'Sehr leicht starten, Hüfte nach hinten, Rücken neutral.',
+      category: 'Hintere Kette',
+      secondary_muscles: 'Bauch/Rumpf, oberer Rücken',
+      equipment: 'Langhantel, Rack',
+      frequency_note: '1x/Woche, 48-72h'
+    },
+    // Brust
+    {
+      name: 'Langhantel-Bankdrücken',
+      muscle_groups: 'Brust',
+      technique_tip: 'Schulterblätter zurück und unten, Hantel zur unteren Brust führen.',
+      category: 'Brust',
+      secondary_muscles: 'Trizeps, vordere Schulter, oberer Rücken',
+      equipment: 'Hantelbank, Langhantel',
+      frequency_note: '1-2x/Woche, 48-72h'
+    },
+    {
+      name: 'Kurzhantel-Bankdrücken',
+      muscle_groups: 'Brust',
+      technique_tip: 'Kurzhanteln kontrolliert absenken, Ellbogen unter Schulter.',
+      category: 'Brust',
+      secondary_muscles: 'Trizeps, vordere Schulter',
+      equipment: 'Hantelbank, Kurzhanteln',
+      frequency_note: '1-2x/Woche, 48h'
+    },
+    {
+      name: 'Kurzhantel-Schrägbankdrücken',
+      muscle_groups: 'obere Brust',
+      technique_tip: 'Bank leicht schräg, Schulterblätter stabil.',
+      category: 'Brust',
+      secondary_muscles: 'vordere Schulter, Trizeps',
+      equipment: 'Schrägbank, Kurzhanteln',
+      frequency_note: '1-2x/Woche, 48h'
+    },
+    {
+      name: 'Kurzhantel-Flys auf der Bank',
+      muscle_groups: 'Brust',
+      technique_tip: 'Leichte Beugung im Ellbogen, langsam öffnen.',
+      category: 'Brust',
+      secondary_muscles: 'vordere Schulter, Bizeps',
+      equipment: 'Hantelbank, leichte Kurzhanteln',
+      frequency_note: '1x/Woche, 48h'
+    },
+    {
+      name: 'Liegestütz an der Bank',
+      muscle_groups: 'Brust',
+      technique_tip: 'Körper gerade, Brust zur Bank.',
+      category: 'Brust',
+      secondary_muscles: 'Trizeps, vordere Schulter, Bauch/Rumpf',
+      equipment: 'Hantelbank, Körpergewicht',
+      frequency_note: '1-3x/Woche, 24-48h'
+    },
+    // Rücken
+    {
+      name: 'Langhantelrudern vorgebeugt',
+      muscle_groups: 'Latissimus, mittlerer Rücken',
+      technique_tip: 'Oberkörper stabil vorgeneigt, Rücken neutral, Hantel zur Brust.',
+      category: 'Rücken',
+      secondary_muscles: 'hintere Schulter, Bizeps, Rückenstrecker',
+      equipment: 'Langhantel',
+      frequency_note: '1-2x/Woche, 48-72h'
+    },
+    {
+      name: 'Einarmiges Kurzhantelrudern auf der Bank',
+      muscle_groups: 'Latissimus, mittlerer Rücken',
+      technique_tip: 'Eine Hand/Knie abstützen, Rücken ruhig, Ellbogen zur Hüfte.',
+      category: 'Rücken',
+      secondary_muscles: 'hintere Schulter, Bizeps',
+      equipment: 'Hantelbank, Kurzhantel',
+      frequency_note: '1-2x/Woche, 48h'
+    },
+    {
+      name: 'Kurzhantel-Rudern beidarmig brustgestützt',
+      muscle_groups: 'mittlerer Rücken, Latissimus',
+      technique_tip: 'Brust auf Bank, Schultern zurückziehen.',
+      category: 'Rücken',
+      secondary_muscles: 'hintere Schulter, Bizeps',
+      equipment: 'Schrägbank, Kurzhanteln',
+      frequency_note: '1-2x/Woche, 48h'
+    },
+    {
+      name: 'Pendlay Row',
+      muscle_groups: 'mittlerer Rücken, Latissimus',
+      technique_tip: 'Jede Wiederholung vom Boden, Rücken neutral, explosiv zur Brust.',
+      category: 'Rücken',
+      secondary_muscles: 'hintere Schulter, Bizeps, Rückenstrecker',
+      equipment: 'Langhantel',
+      frequency_note: '1x/Woche, 48-72h'
+    },
+    {
+      name: 'Kurzhantel-Pullover auf der Bank',
+      muscle_groups: 'Latissimus, Brust',
+      technique_tip: 'Hantel hinter Kopf, Rippen unten halten.',
+      category: 'Rücken',
+      secondary_muscles: 'Trizeps langer Kopf, Rumpf',
+      equipment: 'Hantelbank, Kurzhantel',
+      frequency_note: '1x/Woche, 48h'
+    },
+    {
+      name: 'Langhantel-Shrugs',
+      muscle_groups: 'Trapez/Nacken',
+      technique_tip: 'Schultern gerade nach oben, kurz halten, nicht kreisen.',
+      category: 'Rücken',
+      secondary_muscles: 'Unterarme, oberer Rücken',
+      equipment: 'Langhantel oder Kurzhanteln',
+      frequency_note: '1-2x/Woche, 48h'
+    },
+    // Schultern
+    {
+      name: 'Schulterdrücken stehend mit Langhantel',
+      muscle_groups: 'Schultern',
+      technique_tip: 'Gesäß und Bauch fest, Hantel nah am Gesicht nach oben.',
+      category: 'Schultern',
+      secondary_muscles: 'Trizeps, oberer Rücken, Bauch/Rumpf',
+      equipment: 'Langhantel, Rack',
+      frequency_note: '1-2x/Woche, 48-72h'
+    },
+    {
+      name: 'Sitzendes Kurzhantel-Schulterdrücken',
+      muscle_groups: 'Schultern',
+      technique_tip: 'Rücken stabil, Kurzhanteln kontrolliert auf Schulterhöhe.',
+      category: 'Schultern',
+      secondary_muscles: 'Trizeps, oberer Rücken',
+      equipment: 'Hantelbank, Kurzhanteln',
+      frequency_note: '1-2x/Woche, 48h'
+    },
+    {
+      name: 'Seitheben mit Kurzhanteln',
+      muscle_groups: 'seitliche Schulter',
+      technique_tip: 'Leicht gebeugte Ellbogen, bis Schulterhöhe, kein Schwung.',
+      category: 'Schultern',
+      secondary_muscles: 'Trapez',
+      equipment: 'leichte Kurzhanteln',
+      frequency_note: '1-3x/Woche, 24-48h'
+    },
+    {
+      name: 'Vorgebeugtes Seitheben',
+      muscle_groups: 'hintere Schulter',
+      technique_tip: 'Oberkörper vorgeneigt, seitlich anheben.',
+      category: 'Schultern',
+      secondary_muscles: 'mittlerer Rücken, Trapez',
+      equipment: 'leichte Kurzhanteln',
+      frequency_note: '1-3x/Woche, 24-48h'
+    },
+    {
+      name: 'Frontheben mit Kurzhanteln',
+      muscle_groups: 'vordere Schulter',
+      technique_tip: 'Bis Schulterhöhe, Rumpf fest, kein Schwung.',
+      category: 'Schultern',
+      secondary_muscles: 'oberer Brustanteil, Trapez',
+      equipment: 'Kurzhanteln',
+      frequency_note: '1x/Woche, 48h'
+    },
+    {
+      name: 'Aufrechtes Rudern mit SZ-Stange',
+      muscle_groups: 'seitliche Schulter, Trapez',
+      technique_tip: 'Griff nicht zu eng, Ellbogen bis Schulterhöhe.',
+      category: 'Schultern',
+      secondary_muscles: 'Bizeps, Unterarme',
+      equipment: 'SZ-Stange',
+      frequency_note: '1x/Woche, 48h'
+    },
+    // Arme
+    {
+      name: 'SZ-Curl',
+      muscle_groups: 'Bizeps',
+      technique_tip: 'Ellbogen ruhig, kein Schwung, langsam ablassen.',
+      category: 'Arme',
+      secondary_muscles: 'Brachialis, Unterarme',
+      equipment: 'SZ-Stange',
+      frequency_note: '1-2x/Woche, 48h'
+    },
+    {
+      name: 'Kurzhantel-Curl stehend',
+      muscle_groups: 'Bizeps',
+      technique_tip: 'Schultern ruhig, Handgelenke stabil, kein Rückenschwung.',
+      category: 'Arme',
+      secondary_muscles: 'Unterarme, Brachialis',
+      equipment: 'Kurzhanteln',
+      frequency_note: '1-2x/Woche, 48h'
+    },
+    {
+      name: 'Hammer Curl',
+      muscle_groups: 'Brachialis, Unterarme',
+      technique_tip: 'Neutralgriff, Ellbogen ruhig, kontrolliert.',
+      category: 'Arme',
+      secondary_muscles: 'Bizeps',
+      equipment: 'Kurzhanteln oder Kettlebells',
+      frequency_note: '1-2x/Woche, 48h'
+    },
+    {
+      name: 'Konzentrationscurl sitzend',
+      muscle_groups: 'Bizeps',
+      technique_tip: 'Oberarm am Oberschenkel, langsam curlen.',
+      category: 'Arme',
+      secondary_muscles: 'Brachialis, Unterarme',
+      equipment: 'Kurzhantel, Bank',
+      frequency_note: '1-2x/Woche, 48h'
+    },
+    {
+      name: 'SZ-French-Press liegend',
+      muscle_groups: 'Trizeps',
+      technique_tip: 'Oberarme ruhig, Stange zur Stirn senken, Ellbogen nicht ausstellen.',
+      category: 'Arme',
+      secondary_muscles: 'vordere Schulter, Brust',
+      equipment: 'SZ-Stange, Hantelbank',
+      frequency_note: '1-2x/Woche, 48h'
+    },
+    {
+      name: 'Kurzhantel-Trizepsdrücken über Kopf',
+      muscle_groups: 'Trizeps langer Kopf',
+      technique_tip: 'Ellbogen nach oben, langsam hinter Kopf.',
+      category: 'Arme',
+      secondary_muscles: 'Schultern, Rumpf',
+      equipment: 'Kurzhantel, Bank',
+      frequency_note: '1-2x/Woche, 48h'
+    },
+    {
+      name: 'Kurzhantel-Kickback brustgestützt',
+      muscle_groups: 'Trizeps',
+      technique_tip: 'Oberarm ruhig, Unterarm streckt nach hinten.',
+      category: 'Arme',
+      secondary_muscles: 'hintere Schulter',
+      equipment: 'Bank, Kurzhantel',
+      frequency_note: '1-2x/Woche, 48h'
+    },
+    {
+      name: 'Bank-Dips mit gebeugten Beinen',
+      muscle_groups: 'Trizeps',
+      technique_tip: 'Schultern tief, Ellbogen nach hinten.',
+      category: 'Arme',
+      secondary_muscles: 'Brust, vordere Schulter',
+      equipment: 'Hantelbank',
+      frequency_note: '1x/Woche, 48h'
+    },
+    // Waden
+    {
+      name: 'Stehendes Wadenheben mit Langhantel',
+      muscle_groups: 'Waden',
+      technique_tip: 'Fersen kontrolliert absenken, hochdrücken, kurz halten.',
+      category: 'Waden',
+      secondary_muscles: 'Fußstabilisatoren',
+      equipment: 'Langhantel, Rack',
+      frequency_note: '2-3x/Woche, 24-48h'
+    },
+    {
+      name: 'Sitzendes Wadenheben mit Langhantel',
+      muscle_groups: 'Soleus/Waden',
+      technique_tip: 'Gewicht auf Oberschenkeln, Fersen langsam hoch und runter.',
+      category: 'Waden',
+      secondary_muscles: 'Fußstabilisatoren',
+      equipment: 'Bank, Langhantel',
+      frequency_note: '2-3x/Woche, 24-48h'
+    },
+    // Unterarme
+    {
+      name: 'Langhantel-Halten statisch',
+      muscle_groups: 'Unterarme/Griffkraft',
+      technique_tip: 'Hantel sicher, Schultern stabil, ruhig halten.',
+      category: 'Unterarme',
+      secondary_muscles: 'Trapez, Rumpf',
+      equipment: 'Langhantel',
+      frequency_note: '1-2x/Woche, 48h'
+    },
+    {
+      name: 'Handgelenk-Curls mit Kurzhantel',
+      muscle_groups: 'Unterarmbeuger',
+      technique_tip: 'Unterarme ablegen, nur Handgelenk bewegen, langsam.',
+      category: 'Unterarme',
+      secondary_muscles: 'Griffkraft',
+      equipment: 'Kurzhantel, Bank',
+      frequency_note: '1-2x/Woche, 48h'
+    },
+    {
+      name: 'Reverse Curl mit SZ-Stange',
+      muscle_groups: 'Unterarme, Brachialis',
+      technique_tip: 'Obergriff, Ellbogen ruhig, kein Schwung.',
+      category: 'Unterarme',
+      secondary_muscles: 'Bizeps',
+      equipment: 'SZ-Stange',
+      frequency_note: '1-2x/Woche, 48h'
+    },
+    // Rumpf
+    {
+      name: 'Dead Bug',
+      muscle_groups: 'Bauch/Rumpfstabilität',
+      technique_tip: 'Lendenwirbel Richtung Boden, Arm/Bein langsam bewegen.',
+      category: 'Rumpf',
+      secondary_muscles: 'Hüftbeuger, tiefe Rumpfmuskulatur',
+      equipment: 'Körpergewicht, Matte',
+      frequency_note: '2-4x/Woche, 24h'
+    },
+    {
+      name: 'Bird Dog',
+      muscle_groups: 'Rumpfstabilität, Rückenstrecker',
+      technique_tip: 'Vierfüßlerstand, gegenüber Arm/Bein strecken, Becken ruhig.',
+      category: 'Rumpf',
+      secondary_muscles: 'Gesäß, Schulterstabilisatoren',
+      equipment: 'Körpergewicht, Matte',
+      frequency_note: '2-4x/Woche, 24h'
+    },
+    {
+      name: 'Reverse Crunch',
+      muscle_groups: 'Bauch',
+      technique_tip: 'Becken einrollen, kein Schwung, langsam absenken.',
+      category: 'Rumpf',
+      secondary_muscles: 'Hüftbeuger',
+      equipment: 'Bank oder Boden',
+      frequency_note: '1-3x/Woche, 24-48h'
+    }
+  ];
+
+  const insertCatalogExercise = db.prepare(`
+    INSERT OR IGNORE INTO exercises (name, muscle_groups, technique_tip, category, secondary_muscles, equipment, frequency_note)
+    VALUES (@name, @muscle_groups, @technique_tip, @category, @secondary_muscles, @equipment, @frequency_note)
+  `);
+
+  const updateCatalogExercise = db.prepare(`
+    UPDATE exercises SET category=@category, secondary_muscles=@secondary_muscles,
+      equipment=@equipment, frequency_note=@frequency_note
+    WHERE name=@name
+  `);
+
+  let inserted = 0;
+  let updated = 0;
+  for (const ex of catalogExercises) {
+    const result = insertCatalogExercise.run(ex);
+    if (result.changes === 0) {
+      // Already existed, update metadata fields
+      updateCatalogExercise.run(ex);
+      updated++;
+    } else {
+      inserted++;
+    }
+  }
+  console.log(`Catalog exercises: ${inserted} inserted, ${updated} updated`);
 
   // Create demo user
   const passwordHash = await bcrypt.hash('demo123', 12);

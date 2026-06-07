@@ -10,15 +10,6 @@ function getDb() {
   return db;
 }
 
-function initializeDatabase(dbPath) {
-  const resolvedPath = dbPath || path.join(__dirname, 'training.db');
-  db = new Database(resolvedPath);
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
-  createTables();
-  return db;
-}
-
 function createTables() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -86,6 +77,31 @@ function createTables() {
       FOREIGN KEY (session_exercise_id) REFERENCES session_exercises(id)
     );
   `);
+}
+
+function runMigrations() {
+  const migrations = [
+    'ALTER TABLE exercises ADD COLUMN category TEXT',
+    'ALTER TABLE exercises ADD COLUMN secondary_muscles TEXT',
+    'ALTER TABLE exercises ADD COLUMN equipment TEXT',
+    'ALTER TABLE exercises ADD COLUMN frequency_note TEXT',
+    'ALTER TABLE workout_sets ADD COLUMN rating INTEGER',   // 1=too hard, 2=ok, 3=too easy
+    'ALTER TABLE workout_sets ADD COLUMN note TEXT',
+    'ALTER TABLE workout_sets ADD COLUMN skipped INTEGER DEFAULT 0',
+  ];
+  for (const sql of migrations) {
+    try { db.exec(sql); } catch(e) { /* column already exists */ }
+  }
+}
+
+function initializeDatabase(dbPath) {
+  const resolvedPath = dbPath || path.join(__dirname, 'training.db');
+  db = new Database(resolvedPath);
+  db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
+  createTables();
+  runMigrations();
+  return db;
 }
 
 module.exports = { initializeDatabase, getDb };

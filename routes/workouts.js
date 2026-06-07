@@ -44,15 +44,15 @@ router.post('/workouts/:id/sets', requireAuth, (req, res) => {
   if (!workout) return res.status(404).json({ error: 'Workout not found' });
   if (workout.ended_at) return res.status(400).json({ error: 'Workout already ended' });
 
-  const { session_exercise_id, set_number, weight, reps } = req.body;
+  const { session_exercise_id, set_number, weight, reps, rating, note } = req.body;
   if (!session_exercise_id || set_number === undefined || weight === undefined || reps === undefined) {
     return res.status(400).json({ error: 'session_exercise_id, set_number, weight, and reps are required' });
   }
 
   const result = db.prepare(`
-    INSERT INTO workout_sets (workout_id, session_exercise_id, set_number, weight, reps)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(workout.id, session_exercise_id, set_number, weight, reps);
+    INSERT INTO workout_sets (workout_id, session_exercise_id, set_number, weight, reps, rating, note)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(workout.id, session_exercise_id, set_number, weight, reps, rating || null, note || null);
 
   const set = db.prepare('SELECT * FROM workout_sets WHERE id = ?').get(result.lastInsertRowid);
   res.status(201).json(set);
@@ -184,6 +184,24 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
     avg_weight: Math.round(avgWeight * 2) / 2, // round to nearest 0.5
     last_sets: lastWorkoutSets
   });
+});
+
+// PUT /api/workout-sets/:id
+router.put('/workout-sets/:id', requireAuth, (req, res) => {
+  const db = getDb();
+  const set = db.prepare(`
+    SELECT ws.* FROM workout_sets ws
+    JOIN workouts w ON w.id = ws.workout_id
+    WHERE ws.id = ? AND w.user_id = ?
+  `).get(req.params.id, req.session.userId);
+  if (!set) return res.status(404).json({ error: 'Set not found' });
+
+  const { rating, note } = req.body;
+  db.prepare('UPDATE workout_sets SET rating=?, note=? WHERE id=?')
+    .run(rating ?? set.rating, note ?? set.note, set.id);
+
+  const updated = db.prepare('SELECT * FROM workout_sets WHERE id=?').get(set.id);
+  res.json(updated);
 });
 
 module.exports = router;
