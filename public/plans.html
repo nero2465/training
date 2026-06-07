@@ -113,9 +113,35 @@
         <button class="modal-close" onclick="closeExerciseLibrary()">×</button>
       </div>
       <div class="form-group">
-        <input type="text" class="form-control" id="exercise-search" placeholder="Übung suchen..." oninput="filterExercises()">
+        <input type="text" class="form-control" id="exercise-search" placeholder="Suchen nach Name oder Muskel..." oninput="filterExercises()">
       </div>
-      <div id="exercise-library-list" style="max-height: 50vh; overflow-y: auto;"></div>
+
+      <!-- Create new exercise -->
+      <div style="margin-bottom: 10px;">
+        <button class="btn btn-outline btn-sm btn-full" id="new-ex-toggle-btn" onclick="toggleNewExerciseForm()">
+          + Neue Übung erstellen
+        </button>
+        <div id="new-exercise-form" style="display:none; margin-top:8px; padding:12px; background:var(--bg-elevated); border-radius:10px; border:1px solid var(--accent);">
+          <div class="form-group">
+            <label class="form-label">Name *</label>
+            <input type="text" class="form-control" id="new-ex-name" placeholder="z.B. Bizeps Curl mit KH">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Muskelgruppen</label>
+            <input type="text" class="form-control" id="new-ex-muscles" placeholder="z.B. Bizeps, Unterarm">
+          </div>
+          <div class="form-group" style="margin-bottom:8px;">
+            <label class="form-label">Technik-Hinweis</label>
+            <textarea class="form-control" id="new-ex-technique" rows="2" placeholder="Kurze Beschreibung der korrekten Ausführung..." style="resize:vertical;"></textarea>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-primary btn-sm" onclick="createAndAddExercise()">Erstellen & hinzufügen</button>
+            <button class="btn btn-outline btn-sm" onclick="toggleNewExerciseForm()">Abbrechen</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="exercise-library-list" style="max-height: 40vh; overflow-y: auto;"></div>
     </div>
   </div>
 
