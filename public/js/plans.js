@@ -318,12 +318,56 @@ function openExerciseLibrary(sessionId) {
   targetSessionId = sessionId;
   document.getElementById('exercise-search').value = '';
   renderExerciseLibrary(allExercises);
+  // Close new-exercise form if open
+  document.getElementById('new-exercise-form').style.display = 'none';
+  document.getElementById('new-ex-toggle-btn').textContent = '+ Neue Übung erstellen';
   document.getElementById('exercise-library-modal').classList.add('show');
 }
 
 function closeExerciseLibrary() {
   document.getElementById('exercise-library-modal').classList.remove('show');
   targetSessionId = null;
+}
+
+function toggleNewExerciseForm() {
+  const form = document.getElementById('new-exercise-form');
+  const btn = document.getElementById('new-ex-toggle-btn');
+  if (form.style.display === 'none') {
+    form.style.display = 'block';
+    btn.textContent = '✕ Abbrechen';
+    setTimeout(() => document.getElementById('new-ex-name')?.focus(), 50);
+  } else {
+    form.style.display = 'none';
+    btn.textContent = '+ Neue Übung erstellen';
+  }
+}
+
+async function createAndAddExercise() {
+  const name = document.getElementById('new-ex-name').value.trim();
+  const muscle_groups = document.getElementById('new-ex-muscles').value.trim();
+  const technique_tip = document.getElementById('new-ex-technique').value.trim();
+
+  if (!name) { showToast('Name ist erforderlich', 'error'); return; }
+
+  try {
+    const exercise = await API.post('/api/exercises', { name, muscle_groups, technique_tip });
+    allExercises.push(exercise);
+    allExercises.sort((a, b) => a.name.localeCompare(b.name, 'de'));
+
+    // Clear form
+    document.getElementById('new-ex-name').value = '';
+    document.getElementById('new-ex-muscles').value = '';
+    document.getElementById('new-ex-technique').value = '';
+    toggleNewExerciseForm();
+
+    // Add directly to current session
+    if (targetSessionId) {
+      await addExerciseToSession(exercise.id);
+    }
+    showToast(`"${exercise.name}" erstellt und hinzugefügt`, 'success');
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
 }
 
 function filterExercises() {
