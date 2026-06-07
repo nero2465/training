@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a1a2e">
+  <title>Workout Tracker – Dashboard</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <div class="page">
+    <header class="page-header">
+      <h1>Training</h1>
+      <div class="header-actions">
+        <span id="username-display" class="text-secondary" style="font-size:0.9rem;"></span>
+        <button class="btn btn-ghost btn-sm" onclick="doLogout()" title="Abmelden">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <main class="page-content">
+      <div class="welcome-banner">
+        <h2 id="greeting">Hallo!</h2>
+        <p id="today-info">Wähle eine Trainingseinheit</p>
+      </div>
+
+      <!-- Last workout info -->
+      <div id="last-workout-card" class="card hidden">
+        <div class="card-title">Letztes Training</div>
+        <div id="last-workout-info" class="text-secondary" style="font-size:0.9rem;"></div>
+      </div>
+
+      <div id="plans-container">
+        <div class="loading">
+          <div class="spinner"></div>
+          <span>Lade Trainingspläne...</span>
+        </div>
+      </div>
+
+      <!-- No plans state -->
+      <div id="no-plans" class="empty-state hidden">
+        <div class="icon">📋</div>
+        <h3>Noch kein Trainingsplan</h3>
+        <p>Erstelle deinen ersten Trainingsplan um loszulegen.</p>
+        <a href="/plans.html" class="btn btn-primary">Plan erstellen</a>
+      </div>
+    </main>
+
+    <div id="nav-placeholder"></div>
+  </div>
+
+  <script src="/js/common.js"></script>
+  <script src="/js/dashboard.js"></script>
+</body>
+</html>

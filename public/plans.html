@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a1a2e">
+  <title>Workout Tracker – Pläne</title>
+  <link rel="stylesheet" href="/css/app.css">
+  <style>
+    .plan-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .inline-edit-input {
+      background: var(--bg-primary);
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      color: var(--text-primary);
+      font-size: 0.95rem;
+      padding: 4px 8px;
+      outline: none;
+      font-weight: 700;
+    }
+
+    .session-collapsible {
+      display: none;
+    }
+
+    .session-collapsible.open {
+      display: block;
+    }
+
+    .collapse-icon {
+      transition: transform 0.2s;
+    }
+
+    .session-editor-header.open .collapse-icon {
+      transform: rotate(90deg);
+    }
+
+    .add-session-btn {
+      width: 100%;
+      border: 2px dashed var(--border);
+      background: transparent;
+      color: var(--text-muted);
+      border-radius: var(--radius-sm);
+      padding: 10px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: all 0.2s;
+      margin-top: 6px;
+    }
+
+    .add-session-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .add-plan-card {
+      border: 2px dashed var(--border);
+      background: transparent;
+      border-radius: var(--radius);
+      padding: 20px;
+      text-align: center;
+      cursor: pointer;
+      color: var(--text-muted);
+      transition: all 0.2s;
+      margin-bottom: 12px;
+    }
+
+    .add-plan-card:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .reps-input-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .reps-input {
+      width: 52px;
+      text-align: center;
+      padding: 8px 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="page-header">
+      <h1>Pläne</h1>
+    </header>
+
+    <main class="page-content">
+      <div id="plans-container">
+        <div class="loading">
+          <div class="spinner"></div>
+          <span>Lade Pläne...</span>
+        </div>
+      </div>
+    </main>
+
+    <div id="nav-placeholder"></div>
+  </div>
+
+  <!-- Exercise Library Modal -->
+  <div class="modal-overlay" id="exercise-library-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 class="modal-title">Übung hinzufügen</h2>
+        <button class="modal-close" onclick="closeExerciseLibrary()">×</button>
+      </div>
+      <div class="form-group">
+        <input type="text" class="form-control" id="exercise-search" placeholder="Übung suchen..." oninput="filterExercises()">
+      </div>
+      <div id="exercise-library-list" style="max-height: 50vh; overflow-y: auto;"></div>
+    </div>
+  </div>
+
+  <script src="/js/common.js"></script>
+  <script src="/js/plans.js"></script>
+</body>
+</html>

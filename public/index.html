@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a1a2e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Workout Tracker – Login</title>
+  <link rel="stylesheet" href="/css/app.css">
+  <style>
+    .login-demo-hint {
+      margin-top: 16px;
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+    .login-demo-hint strong {
+      color: var(--text-secondary);
+    }
+  </style>
+</head>
+<body>
+  <div class="login-page">
+    <div class="login-logo">
+      <div class="logo-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="white" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064" />
+          <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      </div>
+      <h1>Workout Tracker</h1>
+      <p>Tracke deinen Fortschritt</p>
+    </div>
+
+    <div class="login-card">
+      <div class="login-tabs">
+        <button class="login-tab active" id="tab-login" onclick="switchTab('login')">Anmelden</button>
+        <button class="login-tab" id="tab-register" onclick="switchTab('register')">Registrieren</button>
+      </div>
+
+      <!-- Login Form -->
+      <div id="form-login">
+        <div class="error-message" id="login-error"></div>
+        <div class="form-group">
+          <label class="form-label">Benutzername</label>
+          <input type="text" class="form-control" id="login-username" placeholder="Benutzername" autocomplete="username" autocapitalize="none">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Passwort</label>
+          <input type="password" class="form-control" id="login-password" placeholder="Passwort" autocomplete="current-password">
+        </div>
+        <button class="btn btn-primary btn-full btn-lg" onclick="doLogin()" id="login-btn">
+          Anmelden
+        </button>
+        <div class="login-demo-hint">
+          Demo: <strong>demo</strong> / <strong>demo123</strong>
+        </div>
+      </div>
+
+      <!-- Register Form -->
+      <div id="form-register" style="display: none;">
+        <div class="error-message" id="register-error"></div>
+        <div class="success-message" id="register-success"></div>
+        <div class="form-group">
+          <label class="form-label">Benutzername</label>
+          <input type="text" class="form-control" id="reg-username" placeholder="Benutzername wählen" autocomplete="username" autocapitalize="none">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Passwort</label>
+          <input type="password" class="form-control" id="reg-password" placeholder="Passwort (min. 6 Zeichen)" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Passwort wiederholen</label>
+          <input type="password" class="form-control" id="reg-password2" placeholder="Passwort bestätigen" autocomplete="new-password">
+        </div>
+        <button class="btn btn-primary btn-full btn-lg" onclick="doRegister()" id="register-btn">
+          Registrieren
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/common.js"></script>
+  <script>
+    // Check if already logged in
+    (async function checkAuth() {
+      try {
+        const data = await API.get('/api/auth/me');
+        if (data.user) {
+          window.location.href = '/dashboard.html';
+        }
+      } catch (e) {
+        // Not logged in, show login form
+      }
+    })();
+
+    function switchTab(tab) {
+      document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+      document.getElementById('tab-register').classList.toggle('active', tab === 'register');
+      document.getElementById('form-login').style.display = tab === 'login' ? 'block' : 'none';
+      document.getElementById('form-register').style.display = tab === 'register' ? 'block' : 'none';
+    }
+
+    async function doLogin() {
+      const username = document.getElementById('login-username').value.trim();
+      const password = document.getElementById('login-password').value;
+      const errEl = document.getElementById('login-error');
+      const btn = document.getElementById('login-btn');
+
+      errEl.classList.remove('show');
+
+      if (!username || !password) {
+        errEl.textContent = 'Bitte Benutzername und Passwort eingeben.';
+        errEl.classList.add('show');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Anmelden...';
+
+      try {
+        await API.post('/api/auth/login', { username, password });
+        window.location.href = '/dashboard.html';
+      } catch (e) {
+        errEl.textContent = e.message || 'Anmeldung fehlgeschlagen.';
+        errEl.classList.add('show');
+        btn.disabled = false;
+        btn.textContent = 'Anmelden';
+      }
+    }
+
+    async function doRegister() {
+      const username = document.getElementById('reg-username').value.trim();
+      const password = document.getElementById('reg-password').value;
+      const password2 = document.getElementById('reg-password2').value;
+      const errEl = document.getElementById('register-error');
+      const successEl = document.getElementById('register-success');
+      const btn = document.getElementById('register-btn');
+
+      errEl.classList.remove('show');
+      successEl.classList.remove('show');
+
+      if (!username || !password) {
+        errEl.textContent = 'Bitte alle Felder ausfüllen.';
+        errEl.classList.add('show');
+        return;
+      }
+
+      if (password !== password2) {
+        errEl.textContent = 'Passwörter stimmen nicht überein.';
+        errEl.classList.add('show');
+        return;
+      }
+
+      if (password.length < 6) {
+        errEl.textContent = 'Passwort muss mindestens 6 Zeichen haben.';
+        errEl.classList.add('show');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Registrieren...';
+
+      try {
+        await API.post('/api/auth/register', { username, password });
+        window.location.href = '/dashboard.html';
+      } catch (e) {
+        errEl.textContent = e.message || 'Registrierung fehlgeschlagen.';
+        errEl.classList.add('show');
+        btn.disabled = false;
+        btn.textContent = 'Registrieren';
+      }
+    }
+
+    // Enter key support
+    document.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        const loginVisible = document.getElementById('form-login').style.display !== 'none';
+        if (loginVisible) doLogin();
+        else doRegister();
+      }
+    });
+  </script>
+</body>
+</html>

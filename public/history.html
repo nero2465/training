@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a1a2e">
+  <title>Workout Tracker – Verlauf</title>
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <div class="page">
+    <header class="page-header">
+      <h1>Verlauf</h1>
+    </header>
+
+    <main class="page-content">
+      <div id="history-container">
+        <div class="loading">
+          <div class="spinner"></div>
+          <span>Lade Verlauf...</span>
+        </div>
+      </div>
+
+      <div id="empty-history" class="empty-state hidden">
+        <div class="icon">📋</div>
+        <h3>Noch keine Trainings</h3>
+        <p>Absolviere dein erstes Training, um es hier zu sehen.</p>
+        <a href="/dashboard.html" class="btn btn-primary">Training starten</a>
+      </div>
+    </main>
+
+    <div id="nav-placeholder"></div>
+  </div>
+
+  <script src="/js/common.js"></script>
+  <script src="/js/history.js"></script>
+</body>
+</html>
