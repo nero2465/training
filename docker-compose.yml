@@ -1,0 +1,46 @@
+version: "3.8"
+
+services:
+  workout-tracker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: workout-tracker
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - SESSION_SECRET=change-this-to-a-long-random-secret
+      - DB_PATH=/data/training.db
+    volumes:
+      # Persist SQLite database on Synology NAS
+      # Change left side to your NAS path, e.g.:
+      # - /volume1/docker/workout-tracker/data:/data
+      - workout-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/auth/me"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  workout-data:
+    driver: local
+
+# ============================================================
+# Synology NAS Deployment Instructions:
+# ============================================================
+# 1. Copy this project to your NAS (e.g., /volume1/docker/workout-tracker)
+# 2. SSH into your NAS
+# 3. cd /volume1/docker/workout-tracker
+# 4. Run: docker-compose up -d --build
+# 5. Seed the demo user: docker-compose exec workout-tracker node db/seed.js
+# 6. Open http://nas-ip:3000 in your browser
+#
+# For persistent data, change the volume mount to a NAS path:
+#   volumes:
+#     - /volume1/docker/workout-tracker/data:/data
+# ============================================================

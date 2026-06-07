@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a1a2e">
+  <title>Workout Tracker – Training</title>
+  <link rel="stylesheet" href="/css/app.css">
+  <style>
+    body { overflow-x: hidden; }
+
+    .training-page {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      background: var(--bg-primary);
+    }
+
+    .training-main {
+      flex: 1;
+      padding: 12px 16px 80px;
+      max-width: 600px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .set-log-row {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 4px;
+      align-items: center;
+    }
+
+    .set-log-num {
+      width: 28px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    .set-log-detail {
+      flex: 1;
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+    }
+
+    .recommendation-hint {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      text-align: center;
+      margin-top: 4px;
+    }
+
+    .recommendation-hint strong {
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <div class="training-page">
+    <!-- Training Header -->
+    <div class="training-header" id="training-header">
+      <div class="training-meta">
+        <div class="training-title" id="training-title">Training</div>
+        <div class="session-timer">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <polyline points="12 6 12 12 16 14"/>
+          </svg>
+          <span id="session-timer">00:00</span>
+        </div>
+      </div>
+      <div class="progress-track" id="progress-track"></div>
+    </div>
+
+    <!-- Main Training Area -->
+    <div class="training-main" id="training-main">
+      <div class="loading" id="loading-state">
+        <div class="spinner"></div>
+        <span>Lade Training...</span>
+      </div>
+
+      <!-- Completed exercises (above current) -->
+      <div id="completed-exercises"></div>
+
+      <!-- Current Exercise Card -->
+      <div class="exercise-card hidden" id="current-exercise-card">
+        <div class="exercise-name-row">
+          <h2 class="exercise-title" id="exercise-name">Übungsname</h2>
+          <button class="exercise-info-btn" id="exercise-info-btn" title="Übungsinfo">
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="8" stroke-width="2.5"/>
+              <line x1="12" y1="12" x2="12" y2="16"/>
+            </svg>
+          </button>
+        </div>
+        <p class="exercise-meta" id="exercise-meta"></p>
+
+        <!-- Sets bubbles -->
+        <div class="sets-grid" id="sets-grid"></div>
+
+        <!-- Logged sets -->
+        <div id="logged-sets-list" style="margin-bottom: 12px;"></div>
+
+        <!-- Recommendation hint -->
+        <div class="recommendation-hint" id="recommendation-hint" style="display:none;"></div>
+
+        <!-- Weight + Reps controls -->
+        <div class="weight-reps-row">
+          <div class="control-group">
+            <div class="control-label">Gewicht</div>
+            <div class="stepper">
+              <button class="stepper-btn" onclick="adjustWeight(-2.5)">−</button>
+              <div class="stepper-value"><span id="weight-display">0</span> kg</div>
+              <button class="stepper-btn" onclick="adjustWeight(2.5)">+</button>
+            </div>
+          </div>
+          <div class="control-group">
+            <div class="control-label">Wdh.</div>
+            <div class="stepper">
+              <button class="stepper-btn" onclick="adjustReps(-1)">−</button>
+              <div class="stepper-value"><span id="reps-display">8</span></div>
+              <button class="stepper-btn" onclick="adjustReps(1)">+</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Log Set Button -->
+        <button class="log-set-btn" id="log-set-btn" onclick="logSet()">
+          Satz speichern
+        </button>
+      </div>
+
+      <!-- End Training Button -->
+      <div class="end-training-area" id="end-training-area" style="display:none;">
+        <button class="btn btn-danger btn-full btn-lg" onclick="endTraining()">
+          Training beenden
+        </button>
+        <p class="text-center text-muted mt-2" style="font-size:0.8rem;">Alle Übungen abgeschlossen!</p>
+      </div>
+
+      <!-- Active end button (always visible) -->
+      <div style="padding: 8px 0 16px; text-align: center;" id="abort-area">
+        <button class="btn btn-outline btn-sm" onclick="confirmEndTraining()">
+          Training abbrechen / beenden
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rest Timer Overlay -->
+  <div class="rest-timer-overlay hidden" id="rest-timer-overlay">
+    <div class="rest-timer-label">Pause</div>
+
+    <div class="rest-timer-ring" id="timer-ring">
+      <svg viewBox="0 0 200 200">
+        <circle class="rest-timer-ring-bg" cx="100" cy="100" r="88"/>
+        <circle class="rest-timer-ring-progress" id="ring-progress" cx="100" cy="100" r="88"
+          stroke-dasharray="553"
+          stroke-dashoffset="0"/>
+      </svg>
+      <div class="rest-timer-ring-text" id="timer-display">60</div>
+    </div>
+
+    <!-- Duration adjustment -->
+    <div class="rest-duration-controls">
+      <button class="rest-duration-btn" onclick="adjustRestDuration(-10)">−10s</button>
+      <div class="rest-duration-label">
+        <div id="rest-total-label" style="font-weight:700;">60s</div>
+        <div style="font-size:0.7rem;color:var(--text-muted);">Pausenzeit</div>
+      </div>
+      <button class="rest-duration-btn" onclick="adjustRestDuration(10)">+10s</button>
+    </div>
+
+    <!-- Controls -->
+    <div class="rest-timer-controls">
+      <button class="btn btn-secondary" onclick="skipRest()">Überspringen</button>
+      <button class="btn btn-primary" id="rest-toggle-btn" onclick="toggleRestTimer()">Pause</button>
+    </div>
+
+    <!-- Next exercise info -->
+    <div class="next-exercise-info" id="next-exercise-info" style="display:none;">
+      <div class="label">Nächste Übung</div>
+      <div class="name" id="next-exercise-name"></div>
+    </div>
+  </div>
+
+  <!-- Training Done Overlay -->
+  <div class="rest-timer-overlay hidden" id="training-done-overlay">
+    <div style="text-align:center; max-width: 320px;">
+      <div style="font-size:4rem; margin-bottom:16px;">🏆</div>
+      <h2 style="font-size:1.8rem; margin-bottom:8px;">Training abgeschlossen!</h2>
+      <p class="text-secondary" id="done-summary" style="margin-bottom:24px;"></p>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <button class="btn btn-primary btn-lg" onclick="window.location.href='/history.html'">Verlauf anzeigen</button>
+        <button class="btn btn-secondary" onclick="window.location.href='/dashboard.html'">Zurück zum Start</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/common.js"></script>
+  <script src="/js/training.js"></script>
+</body>
+</html>

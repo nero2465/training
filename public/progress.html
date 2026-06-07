@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a1a2e">
+  <title>Workout Tracker – Fortschritt</title>
+  <link rel="stylesheet" href="/css/app.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="page">
+    <header class="page-header">
+      <h1>Fortschritt</h1>
+    </header>
+
+    <main class="page-content">
+      <!-- Exercise selector -->
+      <div class="exercise-selector">
+        <label class="form-label">Übung auswählen</label>
+        <select class="form-control" id="exercise-select" onchange="onExerciseChange()">
+          <option value="">-- Übung wählen --</option>
+        </select>
+      </div>
+
+      <!-- Stats -->
+      <div id="stats-area" class="hidden">
+        <div class="chart-stats">
+          <div class="stat-box">
+            <div class="value" id="stat-max">0</div>
+            <div class="label">Max. Gewicht</div>
+          </div>
+          <div class="stat-box">
+            <div class="value" id="stat-sessions">0</div>
+            <div class="label">Einheiten</div>
+          </div>
+          <div class="stat-box">
+            <div class="value" id="stat-improvement">+0%</div>
+            <div class="label">Verbesserung</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chart -->
+      <div id="chart-area" class="hidden">
+        <div class="chart-card">
+          <div class="chart-header">
+            <div class="chart-title" id="chart-title">Gewichtsverlauf</div>
+            <!-- Toggle buttons -->
+            <div style="display:flex; gap:6px;">
+              <button class="btn btn-sm btn-secondary active-tab" id="btn-weight" onclick="setChartMode('weight')">Gewicht</button>
+              <button class="btn btn-sm btn-outline" id="btn-volume" onclick="setChartMode('volume')">Volumen</button>
+            </div>
+          </div>
+          <canvas id="progress-chart" height="220"></canvas>
+        </div>
+      </div>
+
+      <!-- Empty state -->
+      <div id="no-data" class="empty-state hidden">
+        <div class="icon">📈</div>
+        <h3>Noch keine Daten</h3>
+        <p>Absolviere Trainings mit dieser Übung um deinen Fortschritt zu sehen.</p>
+      </div>
+
+      <!-- No exercise selected -->
+      <div id="select-prompt" class="empty-state">
+        <div class="icon">💪</div>
+        <h3>Übung auswählen</h3>
+        <p>Wähle eine Übung um deinen Fortschritt zu sehen.</p>
+      </div>
+    </main>
+
+    <div id="nav-placeholder"></div>
+  </div>
+
+  <script src="/js/common.js"></script>
+  <script src="/js/progress.js"></script>
+</body>
+</html>
