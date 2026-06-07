@@ -139,6 +139,20 @@
       min-width: 48px;
       font-size: 1.1rem;
     }
+
+    /* Rating / feedback in rest overlay */
+    .rest-feedback { width:100%; max-width:300px; margin-bottom:16px; text-align:center; }
+    .feedback-label { font-size:0.8rem; color:var(--text-muted); margin-bottom:8px; }
+    .feedback-emojis { display:flex; gap:16px; justify-content:center; }
+    .emoji-btn { font-size:2rem; background:none; border:3px solid transparent; border-radius:50%; width:56px; height:56px; cursor:pointer; transition:all 0.2s; display:flex; align-items:center; justify-content:center; }
+    .emoji-btn.selected { border-color:var(--accent); background:rgba(233,69,96,0.15); transform:scale(1.1); }
+    .emoji-btn:active { transform:scale(0.95); }
+
+    /* Set bubble rating colors */
+    .set-bubble.rating-1 { background:#ef4444 !important; }
+    .set-bubble.rating-2 { background:#4ade80 !important; }
+    .set-bubble.rating-3 { background:#60a5fa !important; }
+    .set-bubble.skipped { background:var(--bg-elevated) !important; color:var(--text-muted) !important; text-decoration:line-through; }
   </style>
 </head>
 <body>
@@ -153,6 +167,10 @@
             <polyline points="12 6 12 12 16 14"/>
           </svg>
           <span id="session-timer">00:00</span>
+          <!-- Minimized rest timer badge -->
+          <div id="rest-mini" style="display:none; align-items:center; gap:4px; background:var(--accent); border-radius:20px; padding:2px 10px; cursor:pointer; font-size:0.85rem; font-weight:700;" onclick="restoreRestTimer()">
+            ⏸ <span id="rest-mini-display">--</span>
+          </div>
         </div>
       </div>
       <div class="progress-track" id="progress-track"></div>
@@ -204,7 +222,11 @@
             <div class="control-label">Gewicht</div>
             <div class="stepper">
               <button class="stepper-btn" onclick="adjustWeight(-2.5)">−</button>
-              <div class="stepper-value"><span id="weight-display">0</span> kg</div>
+              <div class="stepper-value">
+                <input type="number" id="weight-display" value="0" min="0" step="2.5"
+                  style="background:transparent;border:none;border-bottom:1px solid var(--border);color:inherit;font-size:1.4rem;font-weight:700;width:70px;text-align:center;outline:none;"
+                  onchange="setWeightFromInput()" oninput="setWeightFromInput()"> kg
+              </div>
               <button class="stepper-btn" onclick="adjustWeight(2.5)">+</button>
             </div>
           </div>
@@ -218,10 +240,11 @@
           </div>
         </div>
 
-        <!-- Log Set Button -->
-        <button class="log-set-btn" id="log-set-btn" onclick="logSet()">
-          Satz speichern
-        </button>
+        <!-- Log Set + Skip buttons -->
+        <div style="display:flex; gap:8px; margin-top:12px;">
+          <button class="log-set-btn" id="log-set-btn" onclick="logSet()" style="flex:3;">Satz speichern</button>
+          <button class="btn btn-secondary" id="skip-set-btn" onclick="skipSet()" style="flex:1; border-radius:12px;">Überspringen</button>
+        </div>
       </div>
 
       <!-- Upcoming exercises -->
@@ -246,7 +269,11 @@
 
   <!-- Rest Timer Overlay -->
   <div class="rest-timer-overlay hidden" id="rest-timer-overlay">
-    <div class="rest-timer-label">Pause</div>
+    <!-- Header with minimize button -->
+    <div style="display:flex; justify-content:space-between; align-items:center; width:100%; max-width:320px; margin-bottom:8px;">
+      <div class="rest-timer-label">Pause</div>
+      <button onclick="minimizeRestTimer()" style="background:none;border:none;color:var(--text-muted);font-size:1.2rem;cursor:pointer;" title="Minimieren">⬇</button>
+    </div>
 
     <div class="rest-timer-ring" id="timer-ring">
       <svg viewBox="0 0 200 200">
@@ -266,6 +293,18 @@
         <div style="font-size:0.7rem;color:var(--text-muted);">Pausenzeit</div>
       </div>
       <button class="rest-duration-btn" onclick="adjustRestDuration(10)">+10s</button>
+    </div>
+
+    <!-- Set feedback: rating + note -->
+    <div class="rest-feedback" id="rest-feedback">
+      <div class="feedback-label">Wie war der Satz?</div>
+      <div class="feedback-emojis">
+        <button class="emoji-btn" id="rating-1" onclick="selectRating(1)" title="Zu schwer / nicht geschafft">😤</button>
+        <button class="emoji-btn" id="rating-2" onclick="selectRating(2)" title="Geschafft">✅</button>
+        <button class="emoji-btn" id="rating-3" onclick="selectRating(3)" title="Zu leicht">💪</button>
+      </div>
+      <textarea id="set-note" placeholder="Notiz zum Satz... (optional)" rows="2"
+        style="width:100%; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; color:var(--text-primary); padding:8px; font-size:0.85rem; resize:none; margin-top:8px;"></textarea>
     </div>
 
     <!-- Controls -->
