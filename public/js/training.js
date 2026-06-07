@@ -17,6 +17,10 @@ let sessionId = null;
 let sessionLabel = '';
 let startedAt = null;
 
+// Quick-edit state
+let exerciseNameOverrides = {};
+let editingExercise = false;
+
 // Rest timer state
 let restDuration = 60;
 let restRemaining = 60;
@@ -113,7 +117,7 @@ async function showExercise(index) {
   const card = document.getElementById('current-exercise-card');
   card.classList.remove('hidden');
 
-  document.getElementById('exercise-name').textContent = ex.name;
+  document.getElementById('exercise-name').textContent = exerciseNameOverrides[ex.id] || ex.name;
 
   let metaText = `${ex.sets} × `;
   if (ex.reps_min === ex.reps_max) {
@@ -146,8 +150,12 @@ async function showExercise(index) {
   document.getElementById('end-training-area').style.display = 'none';
   document.getElementById('abort-area').style.display = 'block';
 
-  // Render completed exercises above
+  // Close edit form if open
+  closeExerciseEdit();
+
+  // Render completed + upcoming
   renderCompletedExercises();
+  renderUpcomingExercises();
 }
 
 function buildSetBubbles(ex) {
@@ -395,6 +403,97 @@ function showAllDone() {
     const dot = document.getElementById(`dot-${i}`);
     if (dot) dot.className = 'progress-dot done';
   });
+}
+
+function renderUpcomingExercises() {
+  const container = document.getElementById('upcoming-exercises');
+  if (!container) return;
+
+  const remaining = exercises.slice(currentExerciseIndex + 1);
+  if (remaining.length === 0) {
+    container.style.display = 'none';
+    return;
+  }
+
+  container.style.display = 'block';
+  const rows = remaining.map((ex, i) => {
+    const name = exerciseNameOverrides[ex.id] || ex.name;
+    const reps = ex.reps_min === ex.reps_max ? ex.reps_min : `${ex.reps_min}–${ex.reps_max}`;
+    return `
+      <div class="upcoming-exercise-row">
+        <span class="upcoming-num">${currentExerciseIndex + i + 2}.</span>
+        <span class="upcoming-name">${escapeHtml(name)}</span>
+        <span class="upcoming-meta">${ex.sets}×${reps}</span>
+      </div>`;
+  }).join('');
+
+  container.innerHTML = `<div class="upcoming-header">Als nächstes</div>${rows}`;
+}
+
+function openExerciseEdit() {
+  if (editingExercise) {
+    closeExerciseEdit();
+    return;
+  }
+  editingExercise = true;
+
+  const ex = exercises[currentExerciseIndex];
+  const currentName = exerciseNameOverrides[ex.id] || ex.name;
+  const logged = (loggedSets[ex.id] || []).length;
+
+  const editDiv = document.getElementById('exercise-edit-form');
+  editDiv.innerHTML = `
+    <div class="exercise-edit-card">
+      <div class="form-group">
+        <label class="form-label">Bezeichnung (nur diese Einheit)</label>
+        <input type="text" class="form-control" id="edit-ex-name" value="${escapeHtml(currentName)}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Sätze gesamt (${logged} bereits erledigt)</label>
+        <div class="stepper stepper-sm">
+          <button class="stepper-btn" onclick="adjustEditSets(-1)">−</button>
+          <div class="stepper-value"><span id="edit-sets-val">${ex.sets}</span></div>
+          <button class="stepper-btn" onclick="adjustEditSets(1)">+</button>
+        </div>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-primary btn-sm" onclick="applyExerciseEdit()">Übernehmen</button>
+        <button class="btn btn-outline btn-sm" onclick="closeExerciseEdit()">Abbrechen</button>
+      </div>
+    </div>`;
+  editDiv.style.display = 'block';
+  setTimeout(() => document.getElementById('edit-ex-name')?.focus(), 50);
+}
+
+function adjustEditSets(delta) {
+  const ex = exercises[currentExerciseIndex];
+  const logged = (loggedSets[ex.id] || []).length;
+  const cur = parseInt(document.getElementById('edit-sets-val').textContent);
+  const next = Math.max(logged + 1, cur + delta);
+  document.getElementById('edit-sets-val').textContent = next;
+}
+
+function applyExerciseEdit() {
+  const ex = exercises[currentExerciseIndex];
+  const newName = document.getElementById('edit-ex-name').value.trim();
+  const newSets = parseInt(document.getElementById('edit-sets-val').textContent);
+
+  if (newName) exerciseNameOverrides[ex.id] = newName;
+  document.getElementById('exercise-name').textContent = exerciseNameOverrides[ex.id] || ex.name;
+
+  if (newSets && newSets !== ex.sets) {
+    ex.sets = newSets;
+    buildSetBubbles(ex);
+  }
+
+  closeExerciseEdit();
+  renderUpcomingExercises();
+}
+
+function closeExerciseEdit() {
+  editingExercise = false;
+  const editDiv = document.getElementById('exercise-edit-form');
+  if (editDiv) { editDiv.style.display = 'none'; editDiv.innerHTML = ''; }
 }
 
 function renderCompletedExercises() {

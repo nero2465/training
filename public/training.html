@@ -55,6 +55,90 @@
     .recommendation-hint strong {
       color: var(--accent);
     }
+
+    /* Upcoming exercises */
+    #upcoming-exercises {
+      margin-top: 10px;
+    }
+
+    .upcoming-header {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      padding: 6px 0 4px;
+    }
+
+    .upcoming-exercise-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      background: var(--bg-card);
+      border-radius: 8px;
+      margin-bottom: 4px;
+      border: 1px solid var(--border);
+      opacity: 0.65;
+    }
+
+    .upcoming-num {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      width: 18px;
+      flex-shrink: 0;
+    }
+
+    .upcoming-name {
+      flex: 1;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .upcoming-meta {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    /* Quick edit form */
+    .exercise-edit-card {
+      background: var(--bg-elevated);
+      border: 1px solid var(--accent);
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+
+    .exercise-edit-card .form-group {
+      margin-bottom: 10px;
+    }
+
+    .exercise-edit-card .form-label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      display: block;
+    }
+
+    .exercise-edit-card .form-control {
+      font-size: 0.95rem;
+    }
+
+    .stepper-sm .stepper-btn {
+      width: 36px;
+      height: 36px;
+      font-size: 1.1rem;
+    }
+
+    .stepper-sm .stepper-value {
+      min-width: 48px;
+      font-size: 1.1rem;
+    }
   </style>
 </head>
 <body>
@@ -88,6 +172,11 @@
       <div class="exercise-card hidden" id="current-exercise-card">
         <div class="exercise-name-row">
           <h2 class="exercise-title" id="exercise-name">Übungsname</h2>
+          <button class="exercise-info-btn" onclick="openExerciseEdit()" title="Übung bearbeiten" id="exercise-edit-btn" style="margin-right:2px;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 112.828 2.828L11.828 15.828a2 2 0 01-1.414.586H9v-2.414a2 2 0 01.586-1.414z"/>
+            </svg>
+          </button>
           <button class="exercise-info-btn" id="exercise-info-btn" title="Übungsinfo">
             <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="10"/>
@@ -96,6 +185,8 @@
             </svg>
           </button>
         </div>
+        <!-- Quick edit form (hidden by default) -->
+        <div id="exercise-edit-form" style="display:none;"></div>
         <p class="exercise-meta" id="exercise-meta"></p>
 
         <!-- Sets bubbles -->
@@ -132,6 +223,9 @@
           Satz speichern
         </button>
       </div>
+
+      <!-- Upcoming exercises -->
+      <div id="upcoming-exercises" style="display:none;"></div>
 
       <!-- End Training Button -->
       <div class="end-training-area" id="end-training-area" style="display:none;">

@@ -143,7 +143,7 @@ async function startTraining(sessionId, planName, sessionLabel) {
       sessionId: parseInt(sessionId),
       sessionLabel,
       planName,
-      startedAt: workout.started_at
+      startedAt: new Date().toISOString()
     });
     window.location.href = '/training.html';
   } catch (e) {
