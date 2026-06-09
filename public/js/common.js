@@ -2,6 +2,8 @@
    Common Utilities - Shared across all pages
    ============================================================ */
 
+const APP_VERSION = '1.9';
+
 // API helper
 const API = {
   async request(method, url, body = null) {

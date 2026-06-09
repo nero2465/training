@@ -12,6 +12,10 @@ async function init() {
   currentUser = await requireAuth();
   if (!currentUser) return;
 
+  // Set version badge
+  const vbadge = document.getElementById('app-version-badge');
+  if (vbadge) vbadge.textContent = `v${APP_VERSION}`;
+
   // Set greeting
   document.getElementById('username-display').textContent = currentUser.username;
   const hour = new Date().getHours();
@@ -72,31 +76,35 @@ async function loadPlans() {
       const sessions = await API.get(`/api/plans/${plan.id}/sessions`);
       if (sessions.length === 0) continue;
 
+      // Sort: NULL (never trained) first, then oldest first
+      sessions.sort((a, b) => {
+        if (!a.last_trained_at && !b.last_trained_at) return 0;
+        if (!a.last_trained_at) return -1;
+        if (!b.last_trained_at) return 1;
+        return new Date(a.last_trained_at) - new Date(b.last_trained_at);
+      });
+
       const planEl = document.createElement('div');
       planEl.className = 'plan-card fade-in';
-
-      const sessionsHTML = await buildSessionsHTML(sessions);
 
       planEl.innerHTML = `
         <div class="plan-card-header">
           <h3>${escapeHtml(plan.name)}</h3>
           ${plan.description ? `<span class="text-secondary" style="font-size:0.8rem;">${escapeHtml(plan.description)}</span>` : ''}
         </div>
-        <div class="session-list">
-          ${sessionsHTML}
+        <div class="session-list" id="session-list-${plan.id}">
+          ${buildSessionsHTML(sessions, plan.name)}
         </div>
       `;
 
       container.appendChild(planEl);
     }
 
-    // Setup click handlers
-    container.querySelectorAll('[data-session-id]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const sessionId = btn.dataset.sessionId;
-        const planName = btn.dataset.planName;
-        const sessionLabel = btn.dataset.sessionLabel;
-        startTraining(sessionId, planName, sessionLabel);
+    // Setup click handlers for session headers (expand/collapse)
+    container.querySelectorAll('.session-card-header').forEach(header => {
+      header.addEventListener('click', () => {
+        const sessionId = header.dataset.sessionId;
+        toggleSession(sessionId, header.dataset.planName, header.dataset.sessionLabel);
       });
     });
 
@@ -105,33 +113,81 @@ async function loadPlans() {
   }
 }
 
-async function buildSessionsHTML(sessions) {
-  const parts = [];
-  for (const session of sessions) {
-    let exerciseCount = '...';
-    try {
-      const exercises = await API.get(`/api/sessions/${session.id}/exercises`);
-      exerciseCount = `${exercises.length} Übungen`;
-    } catch (e) {
-      exerciseCount = '';
+function buildSessionsHTML(sessions, planName) {
+  return sessions.map(session => {
+    let lastTrainedBadge;
+    if (session.last_trained_at) {
+      const d = new Date(session.last_trained_at);
+      const dateStr = d.toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' });
+      lastTrainedBadge = `<span class="session-last-trained">Zuletzt: ${dateStr}</span>`;
+    } else {
+      lastTrainedBadge = `<span class="session-last-trained session-never-trained">Noch nie</span>`;
     }
 
-    parts.push(`
-      <button class="session-btn" data-session-id="${session.id}" data-session-label="${escapeHtml(session.session_label)}" data-plan-name="">
-        <div class="session-label">
-          <div class="session-badge">${escapeHtml(session.session_label)}</div>
-          <div class="session-info">
-            <h4>Training ${escapeHtml(session.session_label)}</h4>
-            <p>${exerciseCount}</p>
+    return `
+      <div class="session-expandable" id="session-expandable-${session.id}">
+        <div class="session-card-header"
+             data-session-id="${session.id}"
+             data-session-label="${escapeHtml(session.session_label)}"
+             data-plan-name="${escapeHtml(planName)}">
+          <div class="session-label">
+            <div class="session-badge">${escapeHtml(session.session_label)}</div>
+            <div class="session-info">
+              <h4>Training ${escapeHtml(session.session_label)}</h4>
+              ${lastTrainedBadge}
+            </div>
           </div>
+          <svg class="session-expand-arrow" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
         </div>
-        <svg class="session-arrow" xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-        </svg>
-      </button>
-    `);
+        <div class="session-expand-body" id="session-body-${session.id}" style="display:none;">
+          <div class="session-exercise-list" id="session-exercises-${session.id}">
+            <div class="loading" style="padding:8px;"><div class="spinner" style="width:16px;height:16px;"></div></div>
+          </div>
+          <button class="btn btn-primary btn-full session-start-btn" onclick="startTraining(${session.id}, '${escapeHtml(planName)}', '${escapeHtml(session.session_label)}')">
+            Training starten
+          </button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function toggleSession(sessionId, planName, sessionLabel) {
+  const body = document.getElementById(`session-body-${sessionId}`);
+  const arrow = document.querySelector(`#session-expandable-${sessionId} .session-expand-arrow`);
+
+  if (body.style.display !== 'none') {
+    body.style.display = 'none';
+    if (arrow) arrow.style.transform = '';
+    return;
   }
-  return parts.join('');
+
+  body.style.display = 'block';
+  if (arrow) arrow.style.transform = 'rotate(90deg)';
+
+  // Lazy-load exercises if not yet loaded
+  const listEl = document.getElementById(`session-exercises-${sessionId}`);
+  if (!listEl.dataset.loaded) {
+    try {
+      const exercises = await API.get(`/api/sessions/${sessionId}/exercises`);
+      listEl.dataset.loaded = '1';
+      if (exercises.length === 0) {
+        listEl.innerHTML = '<p class="text-muted" style="font-size:0.85rem; padding:4px 0;">Keine Übungen zugewiesen.</p>';
+      } else {
+        listEl.innerHTML = exercises.map(ex => {
+          const reps = ex.reps_min === ex.reps_max ? ex.reps_min : `${ex.reps_min}–${ex.reps_max}`;
+          return `<div class="session-exercise-row">
+            <span class="session-exercise-name">${escapeHtml(ex.name)}</span>
+            <span class="session-exercise-meta">${ex.sets}×${reps}</span>
+          </div>`;
+        }).join('');
+      }
+    } catch (e) {
+      listEl.innerHTML = `<p class="text-danger" style="font-size:0.85rem;">Fehler: ${e.message}</p>`;
+    }
+  }
 }
 
 async function startTraining(sessionId, planName, sessionLabel) {

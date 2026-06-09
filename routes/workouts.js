@@ -75,6 +75,19 @@ router.put('/workouts/:id/end', requireAuth, (req, res) => {
   res.json(updated);
 });
 
+// DELETE /api/workouts/:id
+router.delete('/workouts/:id', requireAuth, (req, res) => {
+  const db = getDb();
+  const workout = db.prepare(
+    'SELECT * FROM workouts WHERE id = ? AND user_id = ?'
+  ).get(req.params.id, req.session.userId);
+
+  if (!workout) return res.status(404).json({ error: 'Workout not found' });
+
+  db.prepare('DELETE FROM workouts WHERE id = ?').run(workout.id);
+  res.json({ success: true });
+});
+
 // GET /api/workouts
 router.get('/workouts', requireAuth, (req, res) => {
   const db = getDb();
@@ -87,6 +100,7 @@ router.get('/workouts', requireAuth, (req, res) => {
     LEFT JOIN workout_sets ws ON ws.workout_id = w.id
     WHERE w.user_id = ?
     GROUP BY w.id
+    HAVING COUNT(ws.id) > 0
     ORDER BY w.started_at DESC
   `).all(req.session.userId);
   res.json(workouts);

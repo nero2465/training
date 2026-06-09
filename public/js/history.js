@@ -61,6 +61,7 @@ function groupByMonth(workouts) {
 
 function createWorkoutCard(workout) {
   const wrapper = document.createElement('div');
+  wrapper.id = `wcard-wrapper-${workout.id}`;
 
   const startDate = new Date(workout.started_at);
   const endDate = workout.ended_at ? new Date(workout.ended_at) : null;
@@ -76,6 +77,11 @@ function createWorkoutCard(workout) {
       <div class="workout-card-header">
         <div class="workout-date">${dateStr}</div>
         <span class="workout-badge">${escapeHtml(workout.session_label)}</span>
+        <button class="btn btn-ghost btn-sm workout-delete-btn" onclick="event.stopPropagation(); deleteWorkout(${workout.id})" title="Training löschen" style="margin-left:auto; color:var(--text-muted); padding:2px 6px;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        </button>
       </div>
       <div class="workout-meta">
         <span>${escapeHtml(workout.plan_name)}</span>
@@ -88,6 +94,26 @@ function createWorkoutCard(workout) {
   `;
 
   return wrapper;
+}
+
+async function deleteWorkout(workoutId) {
+  if (!confirm('Training wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.')) return;
+
+  try {
+    await API.delete(`/api/workouts/${workoutId}`);
+    const wrapper = document.getElementById(`wcard-wrapper-${workoutId}`);
+    if (wrapper) wrapper.remove();
+    showToast('Training gelöscht', 'success');
+
+    // Show empty state if no more workouts
+    const cards = document.querySelectorAll('[id^="wcard-wrapper-"]');
+    if (cards.length === 0) {
+      document.getElementById('history-container').innerHTML = '';
+      document.getElementById('empty-history').classList.remove('hidden');
+    }
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
 }
 
 async function toggleDetail(workoutId) {

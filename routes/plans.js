@@ -74,9 +74,14 @@ router.get('/plans/:id/sessions', requireAuth, (req, res) => {
 
   if (!plan) return res.status(404).json({ error: 'Plan not found' });
 
-  const sessions = db.prepare(
-    'SELECT * FROM plan_sessions WHERE plan_id = ? ORDER BY order_index, session_label'
-  ).all(plan.id);
+  const sessions = db.prepare(`
+    SELECT ps.*, MAX(w.started_at) as last_trained_at
+    FROM plan_sessions ps
+    LEFT JOIN workouts w ON w.session_id = ps.id AND w.ended_at IS NOT NULL AND w.user_id = ?
+    WHERE ps.plan_id = ?
+    GROUP BY ps.id
+    ORDER BY ps.order_index, ps.session_label
+  `).all(req.session.userId, plan.id);
 
   res.json(sessions);
 });
