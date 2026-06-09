@@ -6,6 +6,68 @@
   <meta name="theme-color" content="#1a1a2e">
   <title>Workout Tracker – Dashboard</title>
   <link rel="stylesheet" href="/css/app.css">
+  <style>
+    .session-expandable {
+      border-bottom: 1px solid var(--border);
+    }
+    .session-expandable:last-child {
+      border-bottom: none;
+    }
+    .session-card-header {
+      display: flex;
+      align-items: center;
+      padding: 12px 4px;
+      cursor: pointer;
+      user-select: none;
+      gap: 8px;
+    }
+    .session-card-header:hover {
+      background: var(--bg-elevated);
+      border-radius: var(--radius-sm);
+    }
+    .session-expand-arrow {
+      flex-shrink: 0;
+      color: var(--text-muted);
+      transition: transform 0.2s;
+    }
+    .session-expand-body {
+      padding: 4px 0 12px 0;
+    }
+    .session-exercise-list {
+      margin-bottom: 10px;
+    }
+    .session-exercise-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px 4px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.9rem;
+    }
+    .session-exercise-row:last-child {
+      border-bottom: none;
+    }
+    .session-exercise-name {
+      color: var(--text-primary);
+    }
+    .session-exercise-meta {
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      white-space: nowrap;
+    }
+    .session-start-btn {
+      margin-top: 4px;
+    }
+    .session-last-trained {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .session-never-trained {
+      color: var(--accent);
+      font-weight: 600;
+    }
+  </style>
 </head>
 <body>
   <div class="page">

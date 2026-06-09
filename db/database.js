@@ -88,6 +88,7 @@ function runMigrations() {
     'ALTER TABLE workout_sets ADD COLUMN rating INTEGER',
     'ALTER TABLE workout_sets ADD COLUMN note TEXT',
     'ALTER TABLE workout_sets ADD COLUMN skipped INTEGER DEFAULT 0',
+    'ALTER TABLE exercises ADD COLUMN active INTEGER DEFAULT 1',
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch(e) { /* column already exists */ }

@@ -671,12 +671,21 @@ async function endTraining() {
   if (sessionTimerInterval) clearInterval(sessionTimerInterval);
   if (restInterval) clearInterval(restInterval);
 
+  const totalSets = Object.values(loggedSets).reduce((sum, sets) => sum + sets.length, 0);
+
   try {
+    if (totalSets === 0) {
+      // No sets logged — delete the empty workout instead of ending it
+      await API.delete(`/api/workouts/${workoutId}`);
+      WorkoutStorage.clear();
+      window.location.href = '/dashboard.html';
+      return;
+    }
+
     await API.put(`/api/workouts/${workoutId}/end`);
     WorkoutStorage.clear();
 
     // Show completion overlay
-    const totalSets = Object.values(loggedSets).reduce((sum, sets) => sum + sets.length, 0);
     document.getElementById('done-summary').textContent =
       `${exercises.length} Übungen · ${totalSets} Sätze · ${formatDuration(sessionSeconds)}`;
     document.getElementById('training-done-overlay').classList.remove('hidden');

@@ -134,16 +134,27 @@ function createSessionElement(session) {
   const div = document.createElement('div');
   div.className = 'session-editor';
   div.id = `session-${session.id}`;
+  div.dataset.planId = session.plan_id;
 
   div.innerHTML = `
     <div class="session-editor-header" onclick="toggleSession(${session.id})">
-      <div class="session-editor-label">${escapeHtml(session.session_label)}</div>
-      <div class="session-editor-title">Training ${escapeHtml(session.session_label)}</div>
-      <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); deleteSession(${session.id})" title="Einheit löschen">
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
+      <div class="session-editor-label" id="session-label-display-${session.id}" style="cursor:pointer;" onclick="event.stopPropagation(); startEditSessionLabel(${session.id})" title="Klicken zum Umbenennen">${escapeHtml(session.session_label)}</div>
+      <input type="text" class="session-label-input" id="session-label-input-${session.id}"
+        style="display:none; width:48px; font-size:0.85rem; padding:2px 4px; border:1px solid var(--accent); border-radius:4px; background:var(--bg-primary); color:var(--text-primary); text-align:center;"
+        value="${escapeHtml(session.session_label)}"
+        onclick="event.stopPropagation()"
+        onblur="saveSessionLabel(${session.id})"
+        onkeydown="handleSessionLabelKey(event, ${session.id})">
+      <div class="session-editor-title" id="session-title-display-${session.id}">Training ${escapeHtml(session.session_label)}</div>
+      <div style="display:flex; gap:2px; margin-left:auto;" onclick="event.stopPropagation()">
+        <button class="order-btn" id="session-up-${session.id}" onclick="moveSession(${session.id}, -1)" title="Nach oben">▲</button>
+        <button class="order-btn" id="session-down-${session.id}" onclick="moveSession(${session.id}, 1)" title="Nach unten">▼</button>
+        <button class="btn btn-ghost btn-sm" onclick="deleteSession(${session.id})" title="Einheit löschen">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
       <svg class="collapse-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
       </svg>
@@ -159,6 +170,109 @@ function createSessionElement(session) {
   `;
 
   return div;
+}
+
+// =====================
+// Session Label Inline Edit (Feature 4)
+// =====================
+
+const sessionLabelCanceling = new Set(); // guard to prevent blur→save after Escape
+
+function startEditSessionLabel(sessionId) {
+  const display = document.getElementById(`session-label-display-${sessionId}`);
+  const input = document.getElementById(`session-label-input-${sessionId}`);
+  if (!display || !input) return;
+  display.style.display = 'none';
+  input.style.display = '';
+  input.value = display.textContent.trim();
+  input.focus();
+  input.select();
+}
+
+function handleSessionLabelKey(event, sessionId) {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    document.getElementById(`session-label-input-${sessionId}`)?.removeEventListener('blur', null);
+    saveSessionLabel(sessionId);
+  } else if (event.key === 'Escape') {
+    sessionLabelCanceling.add(sessionId);
+    cancelSessionLabel(sessionId);
+  }
+}
+
+function cancelSessionLabel(sessionId) {
+  const display = document.getElementById(`session-label-display-${sessionId}`);
+  const input = document.getElementById(`session-label-input-${sessionId}`);
+  if (!display || !input) return;
+  input.style.display = 'none';
+  display.style.display = '';
+  // Clear the cancel guard after a tick (blur fires synchronously before this)
+  setTimeout(() => sessionLabelCanceling.delete(sessionId), 0);
+}
+
+async function saveSessionLabel(sessionId) {
+  if (sessionLabelCanceling.has(sessionId)) return;
+  const display = document.getElementById(`session-label-display-${sessionId}`);
+  const input = document.getElementById(`session-label-input-${sessionId}`);
+  const titleDisplay = document.getElementById(`session-title-display-${sessionId}`);
+  if (!display || !input) return;
+  if (input.style.display === 'none') return; // already hidden (cancel was called)
+
+  const newLabel = input.value.trim();
+  if (!newLabel) {
+    cancelSessionLabel(sessionId);
+    return;
+  }
+
+  // Don't save if unchanged
+  if (newLabel === display.textContent.trim()) {
+    cancelSessionLabel(sessionId);
+    return;
+  }
+
+  try {
+    await API.put(`/api/sessions/${sessionId}`, { session_label: newLabel });
+    display.textContent = newLabel;
+    if (titleDisplay) titleDisplay.textContent = `Training ${newLabel}`;
+    cancelSessionLabel(sessionId);
+    showToast('Bezeichnung gespeichert', 'success');
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+    cancelSessionLabel(sessionId);
+  }
+}
+
+// =====================
+// Session Reordering (Feature 5)
+// =====================
+
+async function moveSession(sessionId, direction) {
+  // Find plan id from DOM
+  const sessionEl = document.getElementById(`session-${sessionId}`);
+  if (!sessionEl) return;
+  const planCard = sessionEl.closest('.plan-editor-card');
+  if (!planCard) return;
+  const planId = parseInt(planCard.id.replace('plan-', ''));
+
+  try {
+    const sessions = await API.get(`/api/plans/${planId}/sessions`);
+    const idx = sessions.findIndex(s => s.id === sessionId);
+    const newIdx = idx + direction;
+
+    if (newIdx < 0 || newIdx >= sessions.length) return;
+
+    const a = sessions[idx];
+    const b = sessions[newIdx];
+
+    await Promise.all([
+      API.put(`/api/sessions/${a.id}`, { order_index: newIdx }),
+      API.put(`/api/sessions/${b.id}`, { order_index: idx })
+    ]);
+
+    await loadSessions(planId);
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
 }
 
 function toggleSession(sessionId) {
@@ -529,6 +643,192 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.target === modal) closeExerciseLibrary();
   });
 });
+
+// =====================
+// Exercise Catalog Editor (Feature 6)
+// =====================
+
+let catalogLoaded = false;
+
+function toggleCatalog() {
+  const body = document.getElementById('catalog-body');
+  const btn = document.getElementById('catalog-toggle-btn');
+  const icon = document.getElementById('catalog-toggle-icon');
+  if (!body) return;
+
+  if (body.style.display === 'none') {
+    body.style.display = 'block';
+    if (btn) btn.setAttribute('aria-expanded', 'true');
+    if (icon) icon.style.transform = 'rotate(90deg)';
+    if (!catalogLoaded) {
+      loadCatalog();
+    }
+  } else {
+    body.style.display = 'none';
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+    if (icon) icon.style.transform = '';
+  }
+}
+
+async function loadCatalog() {
+  const list = document.getElementById('catalog-list');
+  if (!list) return;
+  list.innerHTML = '<div class="loading" style="padding:12px;"><div class="spinner" style="width:20px;height:20px;"></div></div>';
+
+  try {
+    const exercises = await API.get('/api/exercises?all=true');
+    catalogLoaded = true;
+    renderCatalog(exercises);
+  } catch (e) {
+    list.innerHTML = `<p class="text-danger" style="padding:8px;">Fehler: ${e.message}</p>`;
+  }
+}
+
+function renderCatalog(exercises) {
+  const list = document.getElementById('catalog-list');
+  if (!list) return;
+
+  if (exercises.length === 0) {
+    list.innerHTML = '<p class="text-muted" style="padding:8px;">Keine Übungen vorhanden.</p>';
+    return;
+  }
+
+  list.innerHTML = '';
+  for (const ex of exercises) {
+    const row = createCatalogRow(ex);
+    list.appendChild(row);
+  }
+}
+
+function createCatalogRow(ex) {
+  const div = document.createElement('div');
+  div.className = 'catalog-row';
+  div.id = `catalog-row-${ex.id}`;
+
+  const isActive = ex.active === null || ex.active === 1;
+
+  div.innerHTML = `
+    <div class="catalog-row-info" id="catalog-info-${ex.id}">
+      <div class="catalog-row-name" style="font-weight:600; font-size:0.9rem; ${isActive ? '' : 'text-decoration:line-through; color:var(--text-muted);'}">${escapeHtml(ex.name)}</div>
+      <div class="catalog-row-muscles" style="font-size:0.78rem; color:var(--text-muted);">${escapeHtml(ex.muscle_groups || '')}</div>
+    </div>
+    <div class="catalog-row-actions">
+      <label class="catalog-active-toggle" title="${isActive ? 'Aktiv – klicken zum Deaktivieren' : 'Inaktiv – klicken zum Aktivieren'}" style="cursor:pointer; display:flex; align-items:center; gap:4px; font-size:0.78rem; color:${isActive ? 'var(--success, #4ade80)' : 'var(--text-muted)'};">
+        <input type="checkbox" style="display:none;" ${isActive ? 'checked' : ''} onchange="toggleExerciseActive(${ex.id}, this.checked)">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          ${isActive
+            ? '<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />'
+            : '<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />'}
+        </svg>
+      </label>
+      <button class="btn btn-ghost btn-sm" onclick="openCatalogEdit(${ex.id})" title="Bearbeiten" style="padding:4px 6px;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+        </svg>
+      </button>
+    </div>
+  `;
+
+  return div;
+}
+
+async function toggleExerciseActive(exerciseId, isActive) {
+  try {
+    const updated = await API.put(`/api/exercises/${exerciseId}`, { active: isActive ? 1 : 0 });
+    // Re-render just this row
+    const row = document.getElementById(`catalog-row-${exerciseId}`);
+    if (row) {
+      const newRow = createCatalogRow(updated);
+      row.replaceWith(newRow);
+    }
+    // Also update allExercises cache (the modal picker should only show active)
+    const idx = allExercises.findIndex(e => e.id === exerciseId);
+    if (!isActive && idx !== -1) {
+      allExercises.splice(idx, 1);
+    } else if (isActive && idx === -1) {
+      allExercises.push(updated);
+      allExercises.sort((a, b) => a.name.localeCompare(b.name, 'de'));
+    }
+    showToast(isActive ? 'Übung aktiviert' : 'Übung deaktiviert', 'success');
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
+}
+
+function openCatalogEdit(exerciseId) {
+  const row = document.getElementById(`catalog-row-${exerciseId}`);
+  if (!row) return;
+
+  // Find current data from DOM
+  const nameEl = row.querySelector('.catalog-row-name');
+  const musclesEl = row.querySelector('.catalog-row-muscles');
+  const currentName = nameEl ? nameEl.textContent : '';
+  const currentMuscles = musclesEl ? musclesEl.textContent : '';
+
+  // Fetch full exercise data for technique_tip
+  API.get(`/api/exercises/${exerciseId}`).then(ex => {
+    row.innerHTML = `
+      <div style="flex:1; padding:4px 0;">
+        <div class="form-group" style="margin-bottom:6px;">
+          <input type="text" class="form-control" id="catalog-edit-name-${exerciseId}" value="${escapeHtml(ex.name)}" placeholder="Name" style="font-size:0.85rem; padding:6px 8px;">
+        </div>
+        <div class="form-group" style="margin-bottom:6px;">
+          <input type="text" class="form-control" id="catalog-edit-muscles-${exerciseId}" value="${escapeHtml(ex.muscle_groups || '')}" placeholder="Muskelgruppen" style="font-size:0.85rem; padding:6px 8px;">
+        </div>
+        <div class="form-group" style="margin-bottom:8px;">
+          <textarea class="form-control" id="catalog-edit-tip-${exerciseId}" rows="2" placeholder="Technik-Hinweis" style="font-size:0.82rem; padding:6px 8px; resize:vertical;">${escapeHtml(ex.technique_tip || '')}</textarea>
+        </div>
+        <div style="display:flex; gap:6px;">
+          <button class="btn btn-primary btn-sm" onclick="saveCatalogEdit(${exerciseId})">Speichern</button>
+          <button class="btn btn-outline btn-sm" onclick="cancelCatalogEdit(${exerciseId})">Abbrechen</button>
+        </div>
+      </div>
+    `;
+    row.className = 'catalog-row catalog-row-editing';
+    setTimeout(() => document.getElementById(`catalog-edit-name-${exerciseId}`)?.focus(), 50);
+  }).catch(e => showToast('Fehler: ' + e.message, 'error'));
+}
+
+async function saveCatalogEdit(exerciseId) {
+  const name = document.getElementById(`catalog-edit-name-${exerciseId}`)?.value?.trim();
+  const muscle_groups = document.getElementById(`catalog-edit-muscles-${exerciseId}`)?.value?.trim();
+  const technique_tip = document.getElementById(`catalog-edit-tip-${exerciseId}`)?.value?.trim();
+
+  if (!name) {
+    showToast('Name ist erforderlich', 'error');
+    return;
+  }
+
+  try {
+    const updated = await API.put(`/api/exercises/${exerciseId}`, { name, muscle_groups, technique_tip });
+    // Replace row with fresh rendered row
+    const row = document.getElementById(`catalog-row-${exerciseId}`);
+    if (row) {
+      const newRow = createCatalogRow(updated);
+      row.replaceWith(newRow);
+    }
+    // Update allExercises cache
+    const idx = allExercises.findIndex(e => e.id === exerciseId);
+    if (idx !== -1) allExercises[idx] = updated;
+    showToast('Gespeichert', 'success');
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
+}
+
+async function cancelCatalogEdit(exerciseId) {
+  try {
+    const ex = await API.get(`/api/exercises/${exerciseId}`);
+    const row = document.getElementById(`catalog-row-${exerciseId}`);
+    if (row) {
+      const newRow = createCatalogRow(ex);
+      row.replaceWith(newRow);
+    }
+  } catch (e) {
+    // If fetch fails, just reload the whole catalog
+    loadCatalog();
+  }
+}
 
 function escapeHtml(str) {
   if (!str) return '';
