@@ -12,6 +12,10 @@ async function init() {
   currentUser = await requireAuth();
   if (!currentUser) return;
 
+  // Set version badge
+  const vbadge = document.getElementById('app-version-badge');
+  if (vbadge) vbadge.textContent = `v${APP_VERSION}`;
+
   // Set greeting
   document.getElementById('username-display').textContent = currentUser.username;
   const hour = new Date().getHours();
