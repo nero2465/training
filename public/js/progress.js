@@ -68,10 +68,9 @@ async function onExerciseChange() {
   }
 }
 
-function epley1RM(weight, reps) {
-  if (!reps || reps <= 0) return weight;
-  if (reps === 1) return weight;
-  return Math.round(weight * (1 + reps / 30));
+// Server liefert est_1rm = MAX über alle Sätze von weight × (1 + reps/30) (Epley)
+function workout1RM(d) {
+  return Math.round(d.est_1rm || d.max_weight || 0);
 }
 
 function renderStats(data) {
@@ -88,7 +87,7 @@ function renderStats(data) {
     }
   }
 
-  const best1RM = Math.max(...data.map(d => epley1RM(d.max_weight, d.reps_at_max_weight)));
+  const best1RM = Math.max(...data.map(workout1RM));
 
   document.getElementById('stat-max').textContent = `${maxWeight} kg`;
   document.getElementById('stat-sessions').textContent = sessions;
@@ -125,7 +124,7 @@ function renderChart(data, mode) {
 
   let datasets;
   if (mode === 'weight') {
-    const orm1Values = data.map(d => epley1RM(d.max_weight, d.reps_at_max_weight));
+    const orm1Values = data.map(workout1RM);
     datasets = [
       {
         label: 'Max. Gewicht (kg)',
