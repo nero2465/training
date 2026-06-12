@@ -2,7 +2,7 @@
    Common Utilities - Shared across all pages
    ============================================================ */
 
-const APP_VERSION = '1.9';
+const APP_VERSION = '2.0';
 
 // API helper
 const API = {
@@ -258,6 +258,7 @@ function showExerciseInfo(exercise) {
           <h2 class="modal-title" id="modal-exercise-name"></h2>
           <button class="modal-close" onclick="closeExerciseModal()">×</button>
         </div>
+        <div id="modal-gif-container"></div>
         <div id="modal-muscle-tags" style="margin-bottom: 12px;"></div>
         <div class="technique-box">
           <h4>Technik-Hinweis</h4>
@@ -272,6 +273,15 @@ function showExerciseInfo(exercise) {
   }
 
   document.getElementById('modal-exercise-name').textContent = exercise.name;
+
+  const gifContainer = document.getElementById('modal-gif-container');
+  if (gifContainer) {
+    if (exercise.gif_path) {
+      gifContainer.innerHTML = `<div style="text-align:center; margin-bottom:14px; background:var(--bg-elevated); border-radius:10px; padding:8px; overflow:hidden;"><img src="/exercise-media/${exercise.gif_path}" style="max-width:100%; max-height:220px; object-fit:contain; border-radius:6px;" loading="lazy"></div>`;
+    } else {
+      gifContainer.innerHTML = '';
+    }
+  }
 
   const tagsEl = document.getElementById('modal-muscle-tags');
   const muscles = (exercise.muscle_groups || '').split(',');

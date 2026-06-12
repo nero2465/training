@@ -493,6 +493,11 @@ function filterExercises() {
   renderExerciseLibrary(filtered);
 }
 
+function showExerciseInfoById(exerciseId) {
+  const ex = allExercises.find(e => e.id === exerciseId);
+  if (ex) showExerciseInfo(ex);
+}
+
 function renderExerciseLibrary(exercises) {
   const list = document.getElementById('exercise-library-list');
 
@@ -502,12 +507,17 @@ function renderExerciseLibrary(exercises) {
   }
 
   list.innerHTML = exercises.map(ex => `
-    <div style="padding:10px 12px; border-bottom: 1px solid var(--border); cursor:pointer; transition: background 0.15s;"
-         onclick="addExerciseToSession(${ex.id})"
-         onmouseover="this.style.background='var(--bg-elevated)'"
-         onmouseout="this.style.background=''">
-      <div style="font-weight:600; font-size:0.95rem;">${escapeHtml(ex.name)}</div>
-      <div style="font-size:0.8rem; color:var(--text-muted);">${escapeHtml(ex.muscle_groups || '')}</div>
+    <div style="display:flex; align-items:center; padding:10px 12px; border-bottom:1px solid var(--border); gap:8px; background:transparent; transition:background 0.15s;"
+         onmouseover="this.style.background='var(--bg-elevated)'" onmouseout="this.style.background=''">
+      <div style="flex:1; cursor:pointer; min-width:0;" onclick="addExerciseToSession(${ex.id})">
+        <div style="font-weight:600; font-size:0.95rem;">${escapeHtml(ex.name)}</div>
+        <div style="font-size:0.8rem; color:var(--text-muted);">${escapeHtml(ex.muscle_groups || '')}</div>
+      </div>
+      ${ex.gif_path ? `<button onclick="showExerciseInfoById(${ex.id})" style="background:none;border:none;cursor:pointer;padding:4px 6px;color:var(--accent);flex-shrink:0;" title="GIF & Info ansehen">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><path stroke-linecap="round" d="M12 16v-4m0-4h.01"/>
+        </svg>
+      </button>` : ''}
     </div>
   `).join('');
 }
@@ -706,6 +716,8 @@ function createCatalogRow(ex) {
   div.id = `catalog-row-${ex.id}`;
 
   const isActive = ex.active === null || ex.active === 1;
+  const hasGif = !!ex.gif_path;
+  const gifArg = ex.gif_path ? `'${ex.gif_path}'` : 'null';
 
   div.innerHTML = `
     <div class="catalog-row-info" id="catalog-info-${ex.id}">
@@ -713,6 +725,14 @@ function createCatalogRow(ex) {
       <div class="catalog-row-muscles" style="font-size:0.78rem; color:var(--text-muted);">${escapeHtml(ex.muscle_groups || '')}</div>
     </div>
     <div class="catalog-row-actions">
+      <button class="btn btn-ghost btn-sm" onclick="openGifPicker(${ex.id}, ${gifArg})"
+              title="${hasGif ? 'GIF zugeordnet – ändern' : 'GIF zuordnen'}"
+              style="padding:4px 6px; color:${hasGif ? 'var(--accent)' : 'var(--text-muted)'};">
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <rect x="2" y="6" width="20" height="14" rx="2"/><path d="M8 2h8M10 6v12M14 6v12"/>
+          ${hasGif ? '<path stroke-linecap="round" stroke-linejoin="round" d="M6 12l3 3 5-5" stroke-width="2.5"/>' : ''}
+        </svg>
+      </button>
       <label class="catalog-active-toggle" title="${isActive ? 'Aktiv – klicken zum Deaktivieren' : 'Inaktiv – klicken zum Aktivieren'}" style="cursor:pointer; display:flex; align-items:center; gap:4px; font-size:0.78rem; color:${isActive ? 'var(--success, #4ade80)' : 'var(--text-muted)'};">
         <input type="checkbox" style="display:none;" ${isActive ? 'checked' : ''} onchange="toggleExerciseActive(${ex.id}, this.checked)">
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -829,6 +849,134 @@ async function cancelCatalogEdit(exerciseId) {
     loadCatalog();
   }
 }
+
+// =====================
+// GIF Picker
+// =====================
+
+let gifPickerExerciseId = null;
+let gifPickerSelection = null; // { gif_filename } | { gif_filename: null } (clear)
+let allAvailableGifs = null;   // cache from /api/exercises/available-gifs
+
+async function openGifPicker(exerciseId, currentGifPath) {
+  gifPickerExerciseId = exerciseId;
+  gifPickerSelection = null;
+
+  const ex = allExercises.find(e => e.id === exerciseId) || {};
+  document.getElementById('gif-picker-context').textContent =
+    `Übung: ${ex.name || exerciseId}`;
+
+  // Show current assignment as initial preview
+  if (currentGifPath) {
+    showGifPreviewSelected(currentGifPath, 'Aktuell zugeordnet');
+    document.getElementById('gif-picker-confirm').disabled = false;
+  } else {
+    document.getElementById('gif-preview-selected').style.display = 'none';
+    document.getElementById('gif-picker-confirm').disabled = true;
+  }
+
+  document.getElementById('gif-search').value = '';
+  document.getElementById('gif-picker-modal').classList.add('show');
+
+  if (!allAvailableGifs) {
+    document.getElementById('gif-picker-list').innerHTML =
+      '<div class="loading" style="padding:16px;"><div class="spinner" style="width:20px;height:20px;"></div></div>';
+    try {
+      allAvailableGifs = await API.get('/api/exercises/available-gifs');
+    } catch (e) {
+      document.getElementById('gif-picker-list').innerHTML =
+        '<p style="padding:12px; color:var(--text-muted); font-size:0.85rem;">GIF-Daten nicht gefunden. Bitte zuerst das Dataset auf dem NAS installieren (siehe Anleitung).</p>';
+      return;
+    }
+  }
+
+  renderGifList(allAvailableGifs.slice(0, 60));
+}
+
+function closeGifPicker() {
+  document.getElementById('gif-picker-modal').classList.remove('show');
+  gifPickerExerciseId = null;
+  gifPickerSelection = null;
+}
+
+function filterGifList() {
+  if (!allAvailableGifs) return;
+  const q = document.getElementById('gif-search').value.toLowerCase().trim();
+  const filtered = q
+    ? allAvailableGifs.filter(g => g.name.toLowerCase().includes(q))
+    : allAvailableGifs;
+  renderGifList(filtered.slice(0, 60));
+}
+
+function renderGifList(gifs) {
+  const list = document.getElementById('gif-picker-list');
+  if (!gifs || gifs.length === 0) {
+    list.innerHTML = '<p style="padding:10px; font-size:0.85rem; color:var(--text-muted);">Keine Ergebnisse</p>';
+    return;
+  }
+  list.innerHTML = gifs.map(g => `
+    <div onclick="selectGifItem('${escapeAttr(g.gif_filename)}', '${escapeAttr(g.name)}')"
+         style="display:flex; align-items:center; gap:10px; padding:8px 10px; border-bottom:1px solid var(--border); cursor:pointer;"
+         onmouseover="this.style.background='var(--bg-elevated)'" onmouseout="this.style.background=''">
+      <img src="/exercise-media/${escapeAttr(g.gif_filename)}"
+           style="width:52px; height:52px; object-fit:contain; border-radius:4px; flex-shrink:0; background:var(--bg-elevated);"
+           loading="lazy">
+      <span style="font-size:0.88rem; color:var(--text-primary);">${escapeHtml(g.name)}</span>
+    </div>
+  `).join('');
+}
+
+function escapeAttr(str) {
+  if (!str) return '';
+  return str.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
+function selectGifItem(gif_filename, name) {
+  gifPickerSelection = { gif_filename };
+  showGifPreviewSelected(gif_filename, name);
+  document.getElementById('gif-picker-confirm').disabled = false;
+}
+
+function showGifPreviewSelected(gif_filename, label) {
+  const container = document.getElementById('gif-preview-selected');
+  container.style.display = 'block';
+  document.getElementById('gif-preview-img').src = `/exercise-media/${gif_filename}`;
+  document.getElementById('gif-preview-name').textContent = label || gif_filename;
+}
+
+function clearGifSelection() {
+  gifPickerSelection = { gif_filename: null };
+  document.getElementById('gif-preview-selected').style.display = 'none';
+  document.getElementById('gif-picker-confirm').disabled = false;
+}
+
+async function confirmGifSelection() {
+  if (!gifPickerExerciseId || gifPickerSelection === null) return;
+  const gif_path = gifPickerSelection.gif_filename || null;
+
+  try {
+    const updated = await API.put(`/api/exercises/${gifPickerExerciseId}`, { gif_path });
+
+    // Update allExercises cache
+    const idx = allExercises.findIndex(e => e.id === gifPickerExerciseId);
+    if (idx !== -1) allExercises[idx] = updated;
+
+    // Re-render catalog row
+    const row = document.getElementById(`catalog-row-${gifPickerExerciseId}`);
+    if (row) row.replaceWith(createCatalogRow(updated));
+
+    showToast(gif_path ? 'GIF zugeordnet' : 'GIF entfernt', 'success');
+    closeGifPicker();
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
+}
+
+// Close GIF picker on backdrop click
+document.addEventListener('DOMContentLoaded', () => {
+  const gifModal = document.getElementById('gif-picker-modal');
+  if (gifModal) gifModal.addEventListener('click', e => { if (e.target === gifModal) closeGifPicker(); });
+});
 
 function escapeHtml(str) {
   if (!str) return '';
