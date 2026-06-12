@@ -140,14 +140,22 @@ router.get('/progress/:exercise_id', requireAuth, (req, res) => {
       DATE(w.started_at) as date,
       w.id as workout_id,
       MAX(ws.weight) as max_weight,
-      SUM(ws.weight * ws.reps) as total_volume
+      SUM(ws.weight * ws.reps) as total_volume,
+      (
+        SELECT ws2.reps
+        FROM workout_sets ws2
+        JOIN session_exercises se2 ON se2.id = ws2.session_exercise_id
+        WHERE ws2.workout_id = w.id AND se2.exercise_id = ? AND (ws2.skipped IS NULL OR ws2.skipped = 0)
+        ORDER BY ws2.weight DESC, ws2.reps DESC
+        LIMIT 1
+      ) as reps_at_max_weight
     FROM workout_sets ws
     JOIN workouts w ON w.id = ws.workout_id
     JOIN session_exercises se ON se.id = ws.session_exercise_id
     WHERE w.user_id = ? AND se.exercise_id = ? AND w.ended_at IS NOT NULL
     GROUP BY DATE(w.started_at), w.id
     ORDER BY w.started_at ASC
-  `).all(req.session.userId, req.params.exercise_id);
+  `).all(req.params.exercise_id, req.session.userId, req.params.exercise_id);
 
   res.json(progress);
 });

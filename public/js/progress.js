@@ -68,6 +68,12 @@ async function onExerciseChange() {
   }
 }
 
+function epley1RM(weight, reps) {
+  if (!reps || reps <= 0) return weight;
+  if (reps === 1) return weight;
+  return Math.round(weight * (1 + reps / 30));
+}
+
 function renderStats(data) {
   const weights = data.map(d => d.max_weight);
   const maxWeight = Math.max(...weights);
@@ -82,10 +88,13 @@ function renderStats(data) {
     }
   }
 
+  const best1RM = Math.max(...data.map(d => epley1RM(d.max_weight, d.reps_at_max_weight)));
+
   document.getElementById('stat-max').textContent = `${maxWeight} kg`;
   document.getElementById('stat-sessions').textContent = sessions;
   document.getElementById('stat-improvement').textContent = `${improvement >= 0 ? '+' : ''}${improvement}%`;
   document.getElementById('stat-improvement').style.color = improvement >= 0 ? 'var(--success)' : 'var(--danger)';
+  document.getElementById('stat-1rm').textContent = `~${best1RM} kg`;
 }
 
 function setChartMode(mode) {
@@ -107,11 +116,6 @@ function renderChart(data, mode) {
     return date.toLocaleDateString('de-DE', { month: 'short', day: 'numeric' });
   });
 
-  const values = mode === 'weight'
-    ? data.map(d => d.max_weight)
-    : data.map(d => Math.round(d.total_volume));
-
-  const label = mode === 'weight' ? 'Max. Gewicht (kg)' : 'Volumen (kg)';
   const color = 'rgb(233, 69, 96)';
   const colorAlpha = 'rgba(233, 69, 96, 0.15)';
 
@@ -119,13 +123,13 @@ function renderChart(data, mode) {
     progressChart.destroy();
   }
 
-  progressChart = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [{
-        label,
-        data: values,
+  let datasets;
+  if (mode === 'weight') {
+    const orm1Values = data.map(d => epley1RM(d.max_weight, d.reps_at_max_weight));
+    datasets = [
+      {
+        label: 'Max. Gewicht (kg)',
+        data: data.map(d => d.max_weight),
         borderColor: color,
         backgroundColor: colorAlpha,
         borderWidth: 2.5,
@@ -136,8 +140,43 @@ function renderChart(data, mode) {
         pointHoverRadius: 7,
         fill: true,
         tension: 0.3
-      }]
-    },
+      },
+      {
+        label: 'Geschätztes 1RM (kg)',
+        data: orm1Values,
+        borderColor: 'rgba(96, 165, 250, 0.9)',
+        backgroundColor: 'transparent',
+        borderWidth: 2,
+        borderDash: [6, 3],
+        pointBackgroundColor: 'rgba(96, 165, 250, 0.9)',
+        pointBorderColor: '#16213e',
+        pointBorderWidth: 2,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        fill: false,
+        tension: 0.3
+      }
+    ];
+  } else {
+    datasets = [{
+      label: 'Volumen (kg)',
+      data: data.map(d => Math.round(d.total_volume)),
+      borderColor: color,
+      backgroundColor: colorAlpha,
+      borderWidth: 2.5,
+      pointBackgroundColor: color,
+      pointBorderColor: '#16213e',
+      pointBorderWidth: 2,
+      pointRadius: 5,
+      pointHoverRadius: 7,
+      fill: true,
+      tension: 0.3
+    }];
+  }
+
+  progressChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: true,
@@ -146,7 +185,17 @@ function renderChart(data, mode) {
         intersect: false
       },
       plugins: {
-        legend: { display: false },
+        legend: {
+          display: mode === 'weight',
+          labels: {
+            color: '#a0a0b0',
+            font: { size: 11 },
+            boxWidth: 20,
+            padding: 12,
+            usePointStyle: true,
+            pointStyleWidth: 14
+          }
+        },
         tooltip: {
           backgroundColor: '#16213e',
           borderColor: 'rgba(255,255,255,0.1)',
@@ -157,7 +206,7 @@ function renderChart(data, mode) {
           callbacks: {
             label: (context) => {
               const val = context.parsed.y;
-              return mode === 'weight' ? `${val} kg` : `${val} kg Volumen`;
+              return `${context.dataset.label}: ${val} kg`;
             }
           }
         }
@@ -182,7 +231,7 @@ function renderChart(data, mode) {
           ticks: {
             color: '#606080',
             font: { size: 11 },
-            callback: (val) => mode === 'weight' ? `${val} kg` : `${val}`
+            callback: (val) => `${val} kg`
           }
         }
       }

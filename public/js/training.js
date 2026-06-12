@@ -279,6 +279,19 @@ function selectRating(rating) {
     const btn = document.getElementById(`rating-${r}`);
     if (btn) btn.classList.toggle('selected', r === rating);
   });
+
+  // Immediately update bubble color so user sees feedback without waiting for timer
+  if (lastSetId) {
+    const ex = exercises[currentExerciseIndex];
+    if (ex) {
+      const logged = loggedSets[ex.id] || [];
+      const setEntry = logged.find(s => s.id === lastSetId);
+      if (setEntry) {
+        setEntry.rating = rating;
+        buildSetBubbles(ex);
+      }
+    }
+  }
 }
 
 async function logSet() {
@@ -370,11 +383,10 @@ function startRestTimer(afterLastSet) {
   restPaused = false;
   restMinimized = false;
 
-  // Reset rating/note UI
-  currentRating = null;
-  [1, 2, 3].forEach(r => document.getElementById(`rating-${r}`)?.classList.remove('selected'));
+  // Pre-select rating 2 (ok) as default
   const noteEl = document.getElementById('set-note');
   if (noteEl) noteEl.value = '';
+  selectRating(2);
 
   // Show next exercise info if last set
   const nextInfo = document.getElementById('next-exercise-info');
