@@ -74,26 +74,36 @@ function workout1RM(d) {
 }
 
 function renderStats(data) {
-  const weights = data.map(d => d.max_weight);
-  const maxWeight = Math.max(...weights);
+  const maxWeight = Math.max(...data.map(d => d.max_weight));
+  const maxVolume = Math.max(...data.map(d => d.total_volume));
   const sessions = data.length;
-
-  let improvement = 0;
-  if (data.length >= 2) {
-    const first = data[0].max_weight;
-    const last = data[data.length - 1].max_weight;
-    if (first > 0) {
-      improvement = Math.round(((last - first) / first) * 100);
-    }
-  }
-
   const best1RM = Math.max(...data.map(workout1RM));
 
+  let weightDelta = 0, volumeDelta = 0;
+  if (data.length >= 2) {
+    const first = data[0];
+    const last = data[data.length - 1];
+    if (first.max_weight > 0)
+      weightDelta = Math.round(((last.max_weight - first.max_weight) / first.max_weight) * 100);
+    if (first.total_volume > 0)
+      volumeDelta = Math.round(((last.total_volume - first.total_volume) / first.total_volume) * 100);
+  }
+
   document.getElementById('stat-max').textContent = `${maxWeight} kg`;
-  document.getElementById('stat-sessions').textContent = sessions;
-  document.getElementById('stat-improvement').textContent = `${improvement >= 0 ? '+' : ''}${improvement}%`;
-  document.getElementById('stat-improvement').style.color = improvement >= 0 ? 'var(--success)' : 'var(--danger)';
   document.getElementById('stat-1rm').textContent = `~${best1RM} kg`;
+  document.getElementById('stat-sessions').textContent = sessions;
+
+  const maxVolumeRounded = Math.round(maxVolume);
+  document.getElementById('stat-max-volume').textContent =
+    maxVolumeRounded >= 1000 ? `${(maxVolumeRounded / 1000).toFixed(1)}t` : `${maxVolumeRounded} kg`;
+
+  const vimpEl = document.getElementById('stat-volume-improvement');
+  vimpEl.textContent = `${volumeDelta >= 0 ? '+' : ''}${volumeDelta}%`;
+  vimpEl.style.color = volumeDelta >= 0 ? 'var(--success)' : 'var(--danger)';
+
+  const wimpEl = document.getElementById('stat-improvement');
+  wimpEl.textContent = `${weightDelta >= 0 ? '+' : ''}${weightDelta}%`;
+  wimpEl.style.color = weightDelta >= 0 ? 'var(--success)' : 'var(--danger)';
 }
 
 function setChartMode(mode) {
