@@ -72,11 +72,11 @@ router.put('/exercises/:id', requireAuth, (req, res) => {
   const exercise = db.prepare('SELECT * FROM exercises WHERE id = ?').get(req.params.id);
   if (!exercise) return res.status(404).json({ error: 'Exercise not found' });
 
-  const { name, muscle_groups, technique_tip, active, gif_path } = req.body;
+  const { name, muscle_groups, technique_tip, active, gif_path, increment_kg } = req.body;
 
   db.prepare(`
     UPDATE exercises
-    SET name = ?, muscle_groups = ?, technique_tip = ?, active = ?, gif_path = ?
+    SET name = ?, muscle_groups = ?, technique_tip = ?, active = ?, gif_path = ?, increment_kg = ?
     WHERE id = ?
   `).run(
     name !== undefined ? name.trim() : exercise.name,
@@ -84,6 +84,7 @@ router.put('/exercises/:id', requireAuth, (req, res) => {
     technique_tip !== undefined ? technique_tip : exercise.technique_tip,
     active !== undefined ? (active ? 1 : 0) : (exercise.active !== null ? exercise.active : 1),
     gif_path !== undefined ? (gif_path || null) : exercise.gif_path,
+    increment_kg !== undefined ? (increment_kg > 0 ? increment_kg : null) : exercise.increment_kg,
     exercise.id
   );
 

@@ -798,6 +798,11 @@ function openCatalogEdit(exerciseId) {
         <div class="form-group" style="margin-bottom:8px;">
           <textarea class="form-control" id="catalog-edit-tip-${exerciseId}" rows="2" placeholder="Technik-Hinweis" style="font-size:0.82rem; padding:6px 8px; resize:vertical;">${escapeHtml(ex.technique_tip || '')}</textarea>
         </div>
+        <div class="form-group" style="margin-bottom:8px; display:flex; align-items:center; gap:8px;">
+          <label style="font-size:0.8rem; color:var(--text-muted); white-space:nowrap;">Auto-Progress Schrittweite</label>
+          <input type="number" class="form-control" id="catalog-edit-increment-${exerciseId}" value="${ex.increment_kg || ''}" placeholder="2.5" step="0.5" min="0.5" style="font-size:0.85rem; padding:6px 8px; width:80px;">
+          <span style="font-size:0.8rem; color:var(--text-muted);">kg</span>
+        </div>
         <div style="display:flex; gap:6px;">
           <button class="btn btn-primary btn-sm" onclick="saveCatalogEdit(${exerciseId})">Speichern</button>
           <button class="btn btn-outline btn-sm" onclick="cancelCatalogEdit(${exerciseId})">Abbrechen</button>
@@ -813,6 +818,8 @@ async function saveCatalogEdit(exerciseId) {
   const name = document.getElementById(`catalog-edit-name-${exerciseId}`)?.value?.trim();
   const muscle_groups = document.getElementById(`catalog-edit-muscles-${exerciseId}`)?.value?.trim();
   const technique_tip = document.getElementById(`catalog-edit-tip-${exerciseId}`)?.value?.trim();
+  const incrementRaw = document.getElementById(`catalog-edit-increment-${exerciseId}`)?.value;
+  const increment_kg = incrementRaw ? parseFloat(incrementRaw) : 0;
 
   if (!name) {
     showToast('Name ist erforderlich', 'error');
@@ -820,7 +827,7 @@ async function saveCatalogEdit(exerciseId) {
   }
 
   try {
-    const updated = await API.put(`/api/exercises/${exerciseId}`, { name, muscle_groups, technique_tip });
+    const updated = await API.put(`/api/exercises/${exerciseId}`, { name, muscle_groups, technique_tip, increment_kg });
     // Replace row with fresh rendered row
     const row = document.getElementById(`catalog-row-${exerciseId}`);
     if (row) {

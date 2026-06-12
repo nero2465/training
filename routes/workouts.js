@@ -174,37 +174,72 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
 
   if (!se) return res.status(404).json({ error: 'Session exercise not found' });
 
-  // Get the most recent completed workout sets for this exercise
-  const lastSets = db.prepare(`
-    SELECT ws.weight, ws.reps, ws.set_number
-    FROM workout_sets ws
-    JOIN workouts w ON w.id = ws.workout_id
+  // Most recent completed workout that contains sets for this session exercise
+  const lastWorkout = db.prepare(`
+    SELECT w.id
+    FROM workouts w
+    JOIN workout_sets ws ON ws.workout_id = w.id
     WHERE ws.session_exercise_id = ? AND w.user_id = ? AND w.ended_at IS NOT NULL
-    ORDER BY w.started_at DESC, ws.set_number ASC
-    LIMIT 10
-  `).all(req.params.session_exercise_id, req.session.userId);
+    ORDER BY w.started_at DESC
+    LIMIT 1
+  `).get(req.params.session_exercise_id, req.session.userId);
+
+  if (!lastWorkout) {
+    return res.json({ recommended_weight: 0, last_sets: [] });
+  }
+
+  const lastSets = db.prepare(`
+    SELECT weight, reps, set_number, rating
+    FROM workout_sets
+    WHERE workout_id = ? AND session_exercise_id = ? AND (skipped IS NULL OR skipped = 0)
+    ORDER BY set_number ASC
+  `).all(lastWorkout.id, req.params.session_exercise_id);
 
   if (lastSets.length === 0) {
     return res.json({ recommended_weight: 0, last_sets: [] });
   }
 
-  // Use the weight from the most recent workout (first set of last session)
-  const lastWorkoutSets = [];
-  const seenSets = new Set();
-  for (const s of lastSets) {
-    if (!seenSets.has(s.set_number)) {
-      seenSets.add(s.set_number);
-      lastWorkoutSets.push(s);
+  const maxWeight = Math.max(...lastSets.map(s => s.weight));
+  const avgWeight = lastSets.reduce((sum, s) => sum + s.weight, 0) / lastSets.length;
+
+  const settings = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(req.session.userId);
+  const autoProgress = settings ? settings.auto_progress === 1 : true;
+
+  const exercise = db.prepare('SELECT increment_kg FROM exercises WHERE id = ?').get(se.exercise_id);
+  const increment = (exercise && exercise.increment_kg) || 2.5;
+
+  let recommended = maxWeight;
+  let reason = 'last';
+
+  if (autoProgress) {
+    const ratings = lastSets.map(s => s.rating).filter(r => r !== null && r !== undefined);
+    const anyTooHard = ratings.includes(1);
+    const allTooHard = ratings.length > 0 && ratings.every(r => r === 1);
+    const allSetsDone = lastSets.length >= se.sets;
+    const allRepsMax = lastSets.every(s => s.reps >= se.reps_max);
+
+    if (allTooHard) {
+      // Every rated set was too hard: back off one increment
+      recommended = Math.max(0, maxWeight - increment);
+      reason = 'decrease';
+    } else if (anyTooHard) {
+      reason = 'hold_hard';
+    } else if (allSetsDone && allRepsMax) {
+      recommended = maxWeight + increment;
+      reason = 'increase';
+    } else {
+      reason = 'hold';
     }
   }
 
-  const maxWeight = Math.max(...lastWorkoutSets.map(s => s.weight));
-  const avgWeight = lastWorkoutSets.reduce((sum, s) => sum + s.weight, 0) / lastWorkoutSets.length;
-
   res.json({
-    recommended_weight: maxWeight,
+    recommended_weight: recommended,
+    last_weight: maxWeight,
     avg_weight: Math.round(avgWeight * 2) / 2, // round to nearest 0.5
-    last_sets: lastWorkoutSets
+    increment,
+    reason,
+    auto_progress: autoProgress,
+    last_sets: lastSets
   });
 });
 

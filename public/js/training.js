@@ -229,7 +229,7 @@ async function loadRecommendation(sessionExerciseId) {
     const rec = await API.get(`/api/recommendations/${sessionExerciseId}`);
     if (rec.recommended_weight > 0) {
       hint.style.display = 'block';
-      hint.innerHTML = `Empfehlung: <strong>${rec.recommended_weight} kg</strong> (letztes Training)`;
+      hint.innerHTML = `Empfehlung: <strong>${rec.recommended_weight} kg</strong> ${recommendationReasonText(rec)}`;
       // Pre-set weight to recommended
       if ((loggedSets[sessionExerciseId] || []).length === 0) {
         currentWeight = rec.recommended_weight;
@@ -243,6 +243,22 @@ async function loadRecommendation(sessionExerciseId) {
     }
   } catch (e) {
     hint.style.display = 'none';
+  }
+}
+
+function recommendationReasonText(rec) {
+  const inc = rec.increment % 1 === 0 ? rec.increment : rec.increment.toFixed(1);
+  switch (rec.reason) {
+    case 'increase':
+      return `<span style="color:var(--success, #4ade80);">(+${inc} kg — alle Wdh. geschafft 💪)</span>`;
+    case 'decrease':
+      return `<span style="color:#ef4444;">(−${inc} kg — letztes Mal zu schwer)</span>`;
+    case 'hold_hard':
+      return `<span style="color:var(--text-muted);">(halten — letztes Mal teils zu schwer)</span>`;
+    case 'hold':
+      return `<span style="color:var(--text-muted);">(halten — Wdh.-Ziel noch nicht erreicht)</span>`;
+    default:
+      return '(letztes Training)';
   }
 }
 

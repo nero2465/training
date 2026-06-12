@@ -76,6 +76,12 @@ function createTables() {
       FOREIGN KEY (workout_id) REFERENCES workouts(id) ON DELETE CASCADE,
       FOREIGN KEY (session_exercise_id) REFERENCES session_exercises(id)
     );
+
+    CREATE TABLE IF NOT EXISTS user_settings (
+      user_id INTEGER PRIMARY KEY,
+      auto_progress INTEGER DEFAULT 1,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
   `);
 }
 
@@ -90,12 +96,29 @@ function runMigrations() {
     'ALTER TABLE workout_sets ADD COLUMN skipped INTEGER DEFAULT 0',
     'ALTER TABLE exercises ADD COLUMN active INTEGER DEFAULT 1',
     'ALTER TABLE exercises ADD COLUMN gif_path TEXT',
+    'ALTER TABLE exercises ADD COLUMN increment_kg REAL',
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch(e) { /* column already exists */ }
   }
   seedBuiltinExercises();
   deduplicateExercises();
+  seedExerciseIncrements();
+}
+
+// Sets larger default weight increments for big compound lifts (only where the
+// user hasn't already set a value — increment_kg IS NULL is the untouched state).
+function seedExerciseIncrements() {
+  const compounds = [
+    'Kniebeuge', 'Kreuzheben', 'Rumänisches Kreuzheben', 'Front Squat mit Langhantel',
+    'Zercher Squat', 'Good Morning mit Langhantel', 'Kettlebell Deadlift',
+    'Hip Thrust / Glute Bridge', 'Pendlay Row', 'Langhantelrudern'
+  ];
+  const stmt = db.prepare('UPDATE exercises SET increment_kg = 5 WHERE increment_kg IS NULL AND name = ?');
+  const run = db.transaction(() => {
+    for (const name of compounds) stmt.run(name);
+  });
+  run();
 }
 
 // Adds genuinely new exercises from the catalog (no near-duplicates of seeded originals).
