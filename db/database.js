@@ -97,6 +97,8 @@ function runMigrations() {
     'ALTER TABLE exercises ADD COLUMN active INTEGER DEFAULT 1',
     'ALTER TABLE exercises ADD COLUMN gif_path TEXT',
     'ALTER TABLE exercises ADD COLUMN increment_kg REAL',
+    'ALTER TABLE workout_sets ADD COLUMN exercise_name TEXT',
+    'ALTER TABLE workout_sets ADD COLUMN exercise_id_snapshot INTEGER',
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch(e) { /* column already exists */ }

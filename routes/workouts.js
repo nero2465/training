@@ -49,10 +49,25 @@ router.post('/workouts/:id/sets', requireAuth, (req, res) => {
     return res.status(400).json({ error: 'session_exercise_id, set_number, weight, and reps are required' });
   }
 
+  // Snapshot exercise identity at the moment of logging so plan changes never
+  // corrupt historical data or progress charts.
+  const exSnap = db.prepare(`
+    SELECT e.id as exercise_id, e.name as exercise_name
+    FROM session_exercises se
+    JOIN exercises e ON e.id = se.exercise_id
+    WHERE se.id = ?
+  `).get(session_exercise_id);
+
   const result = db.prepare(`
-    INSERT INTO workout_sets (workout_id, session_exercise_id, set_number, weight, reps, rating, note)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(workout.id, session_exercise_id, set_number, weight, reps, rating || null, note || null);
+    INSERT INTO workout_sets
+      (workout_id, session_exercise_id, set_number, weight, reps, rating, note, exercise_name, exercise_id_snapshot)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    workout.id, session_exercise_id, set_number, weight, reps,
+    rating || null, note || null,
+    exSnap?.exercise_name || null,
+    exSnap?.exercise_id || null
+  );
 
   const set = db.prepare('SELECT * FROM workout_sets WHERE id = ?').get(result.lastInsertRowid);
   res.status(201).json(set);
@@ -120,8 +135,9 @@ router.get('/workouts/:id', requireAuth, (req, res) => {
   if (!workout) return res.status(404).json({ error: 'Workout not found' });
 
   const sets = db.prepare(`
-    SELECT ws.*, e.name as exercise_name, se.sets as target_sets,
-           se.reps_min, se.reps_max, se.order_index
+    SELECT ws.*,
+           COALESCE(ws.exercise_name, e.name) as exercise_name,
+           se.sets as target_sets, se.reps_min, se.reps_max, se.order_index
     FROM workout_sets ws
     JOIN session_exercises se ON se.id = ws.session_exercise_id
     JOIN exercises e ON e.id = se.exercise_id
@@ -145,7 +161,9 @@ router.get('/progress/:exercise_id', requireAuth, (req, res) => {
     FROM workout_sets ws
     JOIN workouts w ON w.id = ws.workout_id
     JOIN session_exercises se ON se.id = ws.session_exercise_id
-    WHERE w.user_id = ? AND se.exercise_id = ? AND w.ended_at IS NOT NULL
+    WHERE w.user_id = ?
+      AND COALESCE(ws.exercise_id_snapshot, se.exercise_id) = ?
+      AND w.ended_at IS NOT NULL
       AND (ws.skipped IS NULL OR ws.skipped = 0)
     GROUP BY DATE(w.started_at), w.id
     ORDER BY w.started_at ASC
@@ -168,15 +186,20 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
 
   if (!se) return res.status(404).json({ error: 'Session exercise not found' });
 
-  // Most recent completed workout that contains sets for this session exercise
+  // Most recent completed workout for this session_exercise slot where the
+  // exercise matches the current exercise (guards against stale data from a
+  // swapped exercise — old sets for exercise D must not influence exercise K).
   const lastWorkout = db.prepare(`
     SELECT w.id
     FROM workouts w
     JOIN workout_sets ws ON ws.workout_id = w.id
-    WHERE ws.session_exercise_id = ? AND w.user_id = ? AND w.ended_at IS NOT NULL
+    WHERE ws.session_exercise_id = ?
+      AND w.user_id = ?
+      AND w.ended_at IS NOT NULL
+      AND COALESCE(ws.exercise_id_snapshot, ?) = ?
     ORDER BY w.started_at DESC
     LIMIT 1
-  `).get(req.params.session_exercise_id, req.session.userId);
+  `).get(req.params.session_exercise_id, req.session.userId, se.exercise_id, se.exercise_id);
 
   if (!lastWorkout) {
     return res.json({ recommended_weight: 0, last_sets: [] });
