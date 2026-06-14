@@ -18,6 +18,12 @@ let running = false;
 let paused = false;
 let tickInterval = null;
 
+// Prep countdown state (10s lead-in before the first round)
+const PREP_SECONDS = 10;
+let prepping = false;
+let prepRemaining = 0;
+let prepInterval = null;
+
 // ── Setup ──────────────────────────────────────────────────
 
 function updateSetupDisplay() {
@@ -68,7 +74,61 @@ function startEmom() {
   const ctx = getAudioContext();
   if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
 
-  playIntervalBeep();
+  startPrepCountdown();
+}
+
+// ── Prep countdown (lead-in before round 1) ────────────────
+
+function startPrepCountdown() {
+  prepping = true;
+  prepRemaining = PREP_SECONDS;
+
+  document.getElementById('round-display').textContent = 'Bereit machen…';
+  document.getElementById('interval-total-line').style.display = 'none';
+  document.getElementById('prep-label').style.display = '';
+
+  updatePrepDisplay();
+  prepInterval = setInterval(prepTick, 1000);
+}
+
+function prepTick() {
+  if (paused) return;
+
+  prepRemaining--;
+
+  if (prepRemaining <= 0) {
+    clearInterval(prepInterval);
+    prepInterval = null;
+    finishPrepAndStart();
+    return;
+  }
+
+  updatePrepDisplay();
+
+  // Gentle ticks for the final 3 seconds, distinct from the round-start beep
+  if (prepRemaining <= 3) playBeep(660, 0.08, 0.35);
+}
+
+function updatePrepDisplay() {
+  document.getElementById('interval-elapsed').textContent = prepRemaining;
+  const fraction = (PREP_SECONDS - prepRemaining) / PREP_SECONDS;
+  document.getElementById('emom-ring-progress').style.strokeDashoffset =
+    RING_CIRCUMFERENCE * (1 - fraction);
+}
+
+function finishPrepAndStart() {
+  prepping = false;
+
+  document.getElementById('prep-label').style.display = 'none';
+  document.getElementById('interval-total-line').style.display = '';
+  document.getElementById('round-display').textContent = `Runde 1 / ${totalRounds}`;
+
+  elapsed = 0;
+  intElapsed = 0;
+  resetRing();
+  updateTimerDisplay();
+
+  playIntervalBeep(); // round-start sound after the 10s lead-in
   tickInterval = setInterval(tick, 1000);
 }
 
@@ -134,9 +194,15 @@ function togglePause() {
 function abortEmom() {
   if (!confirm('EMOM abbrechen?')) return;
   clearInterval(tickInterval);
+  clearInterval(prepInterval);
   tickInterval = null;
+  prepInterval = null;
   running = false;
   paused = false;
+  prepping = false;
+  // Restore center labels in case we aborted during the prep countdown
+  document.getElementById('prep-label').style.display = 'none';
+  document.getElementById('interval-total-line').style.display = '';
   document.getElementById('timer-screen').classList.add('hidden');
   document.getElementById('setup-screen').classList.remove('hidden');
 }
@@ -175,6 +241,7 @@ function resetEmom() {
 function goBack() {
   if (running && !confirm('Timer läuft – wirklich zur Startseite?')) return;
   if (tickInterval) clearInterval(tickInterval);
+  if (prepInterval) clearInterval(prepInterval);
   window.location.href = '/dashboard.html';
 }
 
