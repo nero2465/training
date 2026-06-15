@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a1a2e">
+  <title>Workout Tracker – Einstellungen</title>
+  <link rel="stylesheet" href="/css/app.css">
+  <style>
+    .setting-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 0;
+    }
+
+    .setting-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .setting-title {
+      font-weight: 700;
+      font-size: 0.95rem;
+      margin-bottom: 4px;
+    }
+
+    .setting-desc {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+
+    /* Toggle switch */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 48px;
+      height: 28px;
+      flex-shrink: 0;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .switch-slider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 28px;
+      transition: background 0.2s, border-color 0.2s;
+    }
+
+    .switch-slider::before {
+      content: '';
+      position: absolute;
+      height: 20px;
+      width: 20px;
+      left: 3px;
+      top: 3px;
+      background: var(--text-muted);
+      border-radius: 50%;
+      transition: transform 0.2s, background 0.2s;
+    }
+
+    .switch input:checked + .switch-slider {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .switch input:checked + .switch-slider::before {
+      transform: translateX(20px);
+      background: #fff;
+    }
+
+    .info-box {
+      background: var(--bg-elevated);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+      margin-top: 4px;
+    }
+
+    .info-box strong {
+      color: var(--text-primary);
+    }
+
+    .back-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="page-header">
+      <a href="/dashboard.html" class="back-link">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+        </svg>
+      </a>
+      <h1>Einstellungen</h1>
+    </header>
+
+    <main class="page-content">
+      <div class="card">
+        <div class="card-title">Training</div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-title">Auto-Progress</div>
+            <div class="setting-desc">
+              Berechnet die Gewichtsempfehlung automatisch aus deinem letzten Training
+              dieser Übung — basierend auf erreichten Wiederholungen und deiner Satz-Bewertung.
+            </div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="auto-progress-toggle" onchange="saveAutoProgress(this.checked)">
+            <span class="switch-slider"></span>
+          </label>
+        </div>
+
+        <div class="info-box" id="auto-progress-explain">
+          <strong>So funktioniert's:</strong><br>
+          • Alle Sätze mit max. Wiederholungen geschafft und kein 😤 → Gewicht wird <strong>erhöht</strong><br>
+          • Mindestens ein Satz mit 😤 bewertet → Gewicht wird <strong>gehalten</strong><br>
+          • Alle Sätze 😤 → Gewicht wird <strong>reduziert</strong><br>
+          • Sonst → Gewicht bleibt gleich<br><br>
+          Die Schrittweite ist pro Übung einstellbar (Übungskatalog auf der Pläne-Seite).
+          Standard: 2,5 kg, große Grundübungen wie Kniebeuge und Kreuzheben: 5 kg.
+          Die Empfehlung ist nur ein Vorschlag — du kannst das Gewicht im Training jederzeit ändern.
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:12px;">
+        <div class="card-title">App</div>
+        <div class="setting-row" style="padding-bottom:0;">
+          <div class="setting-info">
+            <div class="setting-title">Version</div>
+            <div class="setting-desc" id="version-display">–</div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <div id="nav-placeholder"></div>
+  </div>
+
+  <script src="/js/common.js"></script>
+  <script src="/js/settings.js"></script>
+</body>
+</html>

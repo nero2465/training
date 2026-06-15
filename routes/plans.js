@@ -163,7 +163,7 @@ router.get('/sessions/:id/exercises', requireAuth, (req, res) => {
   if (!session) return res.status(404).json({ error: 'Session not found' });
 
   const exercises = db.prepare(`
-    SELECT se.*, e.name, e.muscle_groups, e.technique_tip
+    SELECT se.*, e.name, e.muscle_groups, e.technique_tip, e.gif_path
     FROM session_exercises se
     JOIN exercises e ON e.id = se.exercise_id
     WHERE se.session_id = ?
@@ -201,7 +201,7 @@ router.post('/sessions/:id/exercises', requireAuth, (req, res) => {
   `).run(session.id, exercise_id, sets || 3, reps_min || 8, reps_max || 12, newOrder);
 
   const se = db.prepare(`
-    SELECT se.*, e.name, e.muscle_groups, e.technique_tip
+    SELECT se.*, e.name, e.muscle_groups, e.technique_tip, e.gif_path
     FROM session_exercises se
     JOIN exercises e ON e.id = se.exercise_id
     WHERE se.id = ?
@@ -238,7 +238,7 @@ router.put('/session-exercises/:id', requireAuth, (req, res) => {
   );
 
   const updated = db.prepare(`
-    SELECT se.*, e.name, e.muscle_groups, e.technique_tip
+    SELECT se.*, e.name, e.muscle_groups, e.technique_tip, e.gif_path
     FROM session_exercises se
     JOIN exercises e ON e.id = se.exercise_id
     WHERE se.id = ?
