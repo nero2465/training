@@ -9,6 +9,7 @@ let currentExerciseIndex = 0;
 let currentSetNumber = 1;
 let currentWeight = 0;
 let currentReps = 8;
+let currentBodyweight = false;
 let loggedSets = {}; // { sessionExerciseId: [{ set_number, weight, reps, id, rating }] }
 let sessionTimerInterval = null;
 let sessionSeconds = 0;
@@ -16,6 +17,7 @@ let workoutId = null;
 let sessionId = null;
 let sessionLabel = '';
 let startedAt = null;
+let bodyweightSelections = {};
 
 // Quick-edit state
 let exerciseNameOverrides = {};
@@ -143,6 +145,8 @@ async function showExercise(index) {
   // Set reps to target (midpoint)
   currentReps = ex.reps_max || ex.reps_min;
   updateRepsDisplay();
+  currentBodyweight = bodyweightSelections[ex.id] === true;
+  updateBodyweightDisplay();
 
   // Load recommendation
   await loadRecommendation(ex.id);
@@ -218,7 +222,7 @@ function updateLoggedSetsList(ex) {
   list.innerHTML = logged.map((s, i) => `
     <div class="set-log-row">
       <span class="set-log-num">Satz ${i + 1}</span>
-      <span class="set-log-detail">${s.weight} kg × ${s.reps} Wdh.</span>
+      <span class="set-log-detail">${formatSetSummary(s)}</span>
     </div>
   `).join('');
 }
@@ -289,6 +293,21 @@ function updateRepsDisplay() {
   document.getElementById('reps-display').textContent = currentReps;
 }
 
+function setBodyweightFromInput() {
+  const input = document.getElementById('bodyweight-toggle');
+  currentBodyweight = input ? input.checked : false;
+
+  const ex = exercises[currentExerciseIndex];
+  if (ex) {
+    bodyweightSelections[ex.id] = currentBodyweight;
+  }
+}
+
+function updateBodyweightDisplay() {
+  const input = document.getElementById('bodyweight-toggle');
+  if (input) input.checked = currentBodyweight;
+}
+
 function selectRating(rating) {
   currentRating = rating;
   [1, 2, 3].forEach(r => {
@@ -329,14 +348,22 @@ async function logSet() {
       session_exercise_id: ex.id,
       set_number: setNum,
       weight: currentWeight,
-      reps: currentReps
+      reps: currentReps,
+      is_bodyweight: currentBodyweight ? 1 : 0
     });
 
     // Store set ID for rating/note update after rest
     lastSetId = set.id;
 
     // Save locally (include id and rating for bubble coloring)
-    logged.push({ set_number: setNum, weight: currentWeight, reps: currentReps, id: set.id, rating: null });
+    logged.push({
+      set_number: setNum,
+      weight: currentWeight,
+      reps: currentReps,
+      is_bodyweight: currentBodyweight ? 1 : 0,
+      id: set.id,
+      rating: null
+    });
     loggedSets[ex.id] = logged;
 
     // Update UI
@@ -665,7 +692,7 @@ function renderCompletedExercises() {
     div.className = 'completed-exercise-card fade-in';
 
     const setsHtml = logged.map(s =>
-      `<span class="completed-set-chip">${s.weight}kg × ${s.reps}</span>`
+      `<span class="completed-set-chip">${formatSetSummary(s)}</span>`
     ).join('');
 
     div.innerHTML = `
@@ -732,6 +759,11 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+function formatSetSummary(set) {
+  const bwBadge = set.is_bodyweight ? ' <span class="bodyweight-badge">BW</span>' : '';
+  return `${set.weight} kg × ${set.reps} Wdh.${bwBadge}`;
 }
 
 // Prevent accidental navigation away during training

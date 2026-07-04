@@ -72,6 +72,7 @@ function createTables() {
       set_number INTEGER NOT NULL,
       weight REAL NOT NULL DEFAULT 0,
       reps INTEGER NOT NULL DEFAULT 0,
+      is_bodyweight INTEGER NOT NULL DEFAULT 0,
       completed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (workout_id) REFERENCES workouts(id) ON DELETE CASCADE,
       FOREIGN KEY (session_exercise_id) REFERENCES session_exercises(id)
@@ -94,6 +95,7 @@ function runMigrations() {
     'ALTER TABLE workout_sets ADD COLUMN rating INTEGER',
     'ALTER TABLE workout_sets ADD COLUMN note TEXT',
     'ALTER TABLE workout_sets ADD COLUMN skipped INTEGER DEFAULT 0',
+    'ALTER TABLE workout_sets ADD COLUMN is_bodyweight INTEGER DEFAULT 0',
     'ALTER TABLE exercises ADD COLUMN active INTEGER DEFAULT 1',
     'ALTER TABLE exercises ADD COLUMN gif_path TEXT',
     'ALTER TABLE exercises ADD COLUMN increment_kg REAL',

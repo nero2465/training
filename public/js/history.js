@@ -163,8 +163,8 @@ function renderWorkoutDetail(workout) {
     const rows = sets.map(s => `
       <tr>
         <td>Satz ${s.set_number}</td>
-        <td>${s.weight} kg</td>
-        <td>${s.reps} Wdh.</td>
+        <td>${formatSetMetric(s, 'weight')}</td>
+        <td>${formatSetMetric(s, 'reps')}</td>
         <td>${(s.weight * s.reps).toFixed(0)} kg</td>
       </tr>
     `).join('');
@@ -193,11 +193,30 @@ function renderWorkoutDetail(workout) {
   return `<div style="padding:4px 0;">${parts.join('')}</div>`;
 }
 
+function formatSetMetric(set, type) {
+  const base = type === 'weight' ? `${set.weight} kg` : `${set.reps} Wdh.`;
+  return `${base}${set.is_bodyweight ? ' <span class="bodyweight-badge">BW</span>' : ''}`;
+}
+
 function escapeHtml(str) {
   if (!str) return '';
+  if (typeof document === 'undefined') {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
 }
 
-init();
+if (typeof window !== 'undefined') {
+  init();
+}
+
+if (typeof module !== 'undefined') {
+  module.exports = { renderWorkoutDetail, formatSetMetric };
+}

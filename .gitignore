@@ -3,3 +3,5 @@ db/*.db
 db/*.db-shm
 db/*.db-wal
 .env
+ruvector.db
+.worktrees/

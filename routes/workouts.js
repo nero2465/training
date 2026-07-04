@@ -44,10 +44,12 @@ router.post('/workouts/:id/sets', requireAuth, (req, res) => {
   if (!workout) return res.status(404).json({ error: 'Workout not found' });
   if (workout.ended_at) return res.status(400).json({ error: 'Workout already ended' });
 
-  const { session_exercise_id, set_number, weight, reps, rating, note } = req.body;
+  const { session_exercise_id, set_number, weight, reps, rating, note, is_bodyweight } = req.body;
   if (!session_exercise_id || set_number === undefined || weight === undefined || reps === undefined) {
     return res.status(400).json({ error: 'session_exercise_id, set_number, weight, and reps are required' });
   }
+
+  const isBodyweight = Number(is_bodyweight) === 1 ? 1 : 0;
 
   // Snapshot exercise identity at the moment of logging so plan changes never
   // corrupt historical data or progress charts.
@@ -60,10 +62,10 @@ router.post('/workouts/:id/sets', requireAuth, (req, res) => {
 
   const result = db.prepare(`
     INSERT INTO workout_sets
-      (workout_id, session_exercise_id, set_number, weight, reps, rating, note, exercise_name, exercise_id_snapshot)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (workout_id, session_exercise_id, set_number, weight, reps, is_bodyweight, rating, note, exercise_name, exercise_id_snapshot)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    workout.id, session_exercise_id, set_number, weight, reps,
+    workout.id, session_exercise_id, set_number, weight, reps, isBodyweight,
     rating || null, note || null,
     exSnap?.exercise_name || null,
     exSnap?.exercise_id || null
@@ -151,13 +153,15 @@ router.get('/workouts/:id', requireAuth, (req, res) => {
 // GET /api/progress/:exercise_id
 router.get('/progress/:exercise_id', requireAuth, (req, res) => {
   const db = getDb();
-  const progress = db.prepare(`
+  const rows = db.prepare(`
     SELECT
       DATE(w.started_at) as date,
       w.id as workout_id,
-      MAX(ws.weight) as max_weight,
-      SUM(ws.weight * ws.reps) as total_volume,
-      MAX(CASE WHEN ws.reps <= 1 THEN ws.weight ELSE ws.weight * (1.0 + ws.reps / 30.0) END) as est_1rm
+      w.started_at,
+      ws.set_number,
+      ws.weight,
+      ws.reps,
+      ws.is_bodyweight
     FROM workout_sets ws
     JOIN workouts w ON w.id = ws.workout_id
     JOIN session_exercises se ON se.id = ws.session_exercise_id
@@ -165,9 +169,38 @@ router.get('/progress/:exercise_id', requireAuth, (req, res) => {
       AND COALESCE(ws.exercise_id_snapshot, se.exercise_id) = ?
       AND w.ended_at IS NOT NULL
       AND (ws.skipped IS NULL OR ws.skipped = 0)
-    GROUP BY DATE(w.started_at), w.id
-    ORDER BY w.started_at ASC
+    ORDER BY w.started_at ASC, ws.set_number ASC
   `).all(req.session.userId, req.params.exercise_id);
+
+  const progress = [];
+  let current = null;
+  for (const row of rows) {
+    if (!current || current.workout_id !== row.workout_id) {
+      current = {
+        date: row.date,
+        workout_id: row.workout_id,
+        started_at: row.started_at,
+        max_weight: 0,
+        total_volume: 0,
+        est_1rm: 0,
+        sets: [],
+      };
+      progress.push(current);
+    }
+
+    current.max_weight = Math.max(current.max_weight, row.weight);
+    current.total_volume += row.weight * row.reps;
+    current.est_1rm = Math.max(
+      current.est_1rm,
+      row.reps <= 1 ? row.weight : row.weight * (1.0 + row.reps / 30.0)
+    );
+    current.sets.push({
+      set_number: row.set_number,
+      weight: row.weight,
+      reps: row.reps,
+      is_bodyweight: row.is_bodyweight,
+    });
+  }
 
   res.json(progress);
 });

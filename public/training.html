@@ -153,6 +153,21 @@
     .set-bubble.rating-2 { background:#4ade80 !important; }
     .set-bubble.rating-3 { background:#60a5fa !important; }
     .set-bubble.skipped { background:var(--bg-elevated) !important; color:var(--text-muted) !important; text-decoration:line-through; }
+    .bodyweight-toggle {
+      display:flex;
+      align-items:center;
+      justify-content:flex-end;
+      gap:8px;
+      margin-top:10px;
+      color:var(--text-secondary);
+      font-size:0.9rem;
+      font-weight:600;
+    }
+    .bodyweight-toggle input {
+      width:18px;
+      height:18px;
+      accent-color: var(--accent);
+    }
   </style>
 </head>
 <body>
@@ -239,6 +254,11 @@
             </div>
           </div>
         </div>
+
+        <label class="bodyweight-toggle">
+          <input type="checkbox" id="bodyweight-toggle" onchange="setBodyweightFromInput()">
+          <span>Bodyweight</span>
+        </label>
 
         <!-- Log Set + Skip buttons -->
         <div style="display:flex; gap:8px; margin-top:12px;">

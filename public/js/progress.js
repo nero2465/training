@@ -38,6 +38,8 @@ async function onExerciseChange() {
   document.getElementById('select-prompt').classList.add('hidden');
   document.getElementById('chart-area').classList.add('hidden');
   document.getElementById('stats-area').classList.add('hidden');
+  const sessionList = document.getElementById('progress-session-list');
+  if (sessionList) sessionList.innerHTML = '';
 
   if (!exerciseId) {
     document.getElementById('select-prompt').classList.remove('hidden');
@@ -62,6 +64,7 @@ async function onExerciseChange() {
     // Show chart
     document.getElementById('chart-area').classList.remove('hidden');
     renderChart(progressData, chartMode);
+    renderSessionList(progressData);
 
   } catch (e) {
     showToast('Fehler beim Laden: ' + e.message, 'error');
@@ -213,6 +216,10 @@ function renderChart(data, mode) {
           bodyColor: '#a0a0b0',
           padding: 12,
           callbacks: {
+            afterTitle: (items) => {
+              const entry = data[items[0].dataIndex];
+              return formatTooltipSetList(entry);
+            },
             label: (context) => {
               const val = context.parsed.y;
               return `${context.dataset.label}: ${val} kg`;
@@ -248,4 +255,61 @@ function renderChart(data, mode) {
   });
 }
 
-init();
+function renderSessionList(data) {
+  const container = document.getElementById('progress-session-list');
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="chart-card">
+      <div class="chart-header" style="margin-bottom:12px;">
+        <div class="chart-title">Satzverlauf</div>
+      </div>
+      <div class="progress-session-list">
+        ${data.slice().reverse().map(renderSessionCard).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function renderSessionCard(entry) {
+  const dateLabel = new Date(entry.started_at || entry.date).toLocaleDateString('de-DE', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+  const sets = (entry.sets || []).map(set => `
+    <div class="progress-set-row">
+      <div class="progress-set-label">Satz ${set.set_number}</div>
+      <div class="progress-set-detail">${formatSetSummary(set)}</div>
+    </div>
+  `).join('');
+
+  return `
+    <div class="progress-session-card">
+      <div class="progress-session-header">
+        <div class="progress-session-date">${dateLabel}</div>
+        <div class="progress-session-meta">${Math.round(entry.total_volume)} kg Volumen</div>
+      </div>
+      ${sets}
+    </div>
+  `;
+}
+
+function formatSetSummary(set) {
+  const bwBadge = set.is_bodyweight ? ' <span class="bodyweight-badge">BW</span>' : '';
+  return `${set.weight} kg × ${set.reps} Wdh.${bwBadge}`;
+}
+
+function formatTooltipSetList(entry) {
+  return (entry.sets || []).map(set =>
+    `S${set.set_number}: ${set.weight}kg × ${set.reps}${set.is_bodyweight ? ' BW' : ''}`
+  );
+}
+
+if (typeof window !== 'undefined') {
+  init();
+}
+
+if (typeof module !== 'undefined') {
+  module.exports = { renderSessionCard, formatSetSummary, formatTooltipSetList };
+}

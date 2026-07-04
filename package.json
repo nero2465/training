@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "seed": "node db/seed.js"
+    "seed": "node db/seed.js",
+    "test": "node --test routes/*.test.js"
   },
   "dependencies": {
     "bcrypt": "^5.1.1",
