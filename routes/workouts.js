@@ -239,7 +239,7 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
   }
 
   const lastSets = db.prepare(`
-    SELECT weight, reps, set_number, rating
+    SELECT weight, reps, set_number, rating, is_bodyweight
     FROM workout_sets
     WHERE workout_id = ? AND session_exercise_id = ? AND (skipped IS NULL OR skipped = 0)
     ORDER BY set_number ASC
@@ -289,6 +289,7 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
     increment,
     reason,
     auto_progress: autoProgress,
+    last_bodyweight: lastSets.some(set => Number(set.is_bodyweight) === 1),
     last_sets: lastSets
   });
 });

@@ -231,6 +231,14 @@ async function loadRecommendation(sessionExerciseId) {
   const hint = document.getElementById('recommendation-hint');
   try {
     const rec = await API.get(`/api/recommendations/${sessionExerciseId}`);
+
+    const hasBodyweightSelection = Object.prototype.hasOwnProperty.call(bodyweightSelections, sessionExerciseId);
+    if (!hasBodyweightSelection) {
+      currentBodyweight = rec.last_bodyweight === true;
+      bodyweightSelections[sessionExerciseId] = currentBodyweight;
+      updateBodyweightDisplay();
+    }
+
     if (rec.recommended_weight > 0) {
       hint.style.display = 'block';
       hint.innerHTML = `Empfehlung: <strong>${rec.recommended_weight} kg</strong> ${recommendationReasonText(rec)}`;

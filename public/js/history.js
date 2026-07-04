@@ -159,6 +159,7 @@ function renderWorkoutDetail(workout) {
   const parts = Object.entries(byExercise).map(([name, sets]) => {
     const maxWeight = Math.max(...sets.map(s => s.weight));
     const totalVol = sets.reduce((sum, s) => sum + s.weight * s.reps, 0);
+    const hasBodyweightSets = sets.some(s => s.is_bodyweight);
 
     const rows = sets.map(s => `
       <tr>
@@ -171,7 +172,9 @@ function renderWorkoutDetail(workout) {
 
     return `
       <div style="margin-bottom:16px;">
-        <div style="font-weight:700; margin-bottom:6px; color:var(--text-primary);">${escapeHtml(name)}</div>
+        <div style="font-weight:700; margin-bottom:6px; color:var(--text-primary);">
+          ${escapeHtml(name)}${hasBodyweightSets ? ' <span class="bodyweight-badge">BW</span>' : ''}
+        </div>
         <table class="sets-table">
           <thead>
             <tr>

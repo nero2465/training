@@ -139,6 +139,7 @@ test('progress aggregation keeps volume logic unchanged and exposes BW set metad
   });
   assert.match(historyHtml, /bodyweight-badge/);
   assert.match(historyHtml, />BW</);
+  assert.match(historyHtml, /Dips[\s\S]*bodyweight-badge/);
 
   const progressCardHtml = renderSessionCard(res.body[0]);
   assert.match(progressCardHtml, /bodyweight-badge/);
@@ -147,6 +148,50 @@ test('progress aggregation keeps volume logic unchanged and exposes BW set metad
   assert.deepEqual(formatTooltipSetList(res.body[0]), [
     'S1: 12.5kg × 10 BW',
     'S2: 15kg × 8',
+  ]);
+});
+
+test('recommendations expose last bodyweight state for next training defaults', async () => {
+  const db = {
+    prepare(sql) {
+      if (sql.includes('SELECT se.* FROM session_exercises se')) {
+        return { get: () => ({ id: 22, exercise_id: 5, sets: 2, reps_max: 10 }) };
+      }
+      if (sql.includes('SELECT w.id')) {
+        return { get: () => ({ id: 81 }) };
+      }
+      if (sql.includes('SELECT weight, reps, set_number, rating, is_bodyweight')) {
+        return {
+          all: () => ([
+            { weight: 12.5, reps: 10, set_number: 1, rating: 2, is_bodyweight: 1 },
+            { weight: 12.5, reps: 10, set_number: 2, rating: 2, is_bodyweight: 1 },
+          ]),
+        };
+      }
+      if (sql.includes('SELECT * FROM user_settings WHERE user_id = ?')) {
+        return { get: () => ({ auto_progress: 1 }) };
+      }
+      if (sql.includes('SELECT increment_kg FROM exercises WHERE id = ?')) {
+        return { get: () => ({ increment_kg: 2.5 }) };
+      }
+      throw new Error(`Unexpected SQL: ${sql}`);
+    },
+  };
+
+  const req = {
+    params: { session_exercise_id: '22' },
+    session: { userId: 7 },
+  };
+  const res = createRes();
+
+  await routes.get['/recommendations/:session_exercise_id'](req, res, db);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.recommended_weight, 15);
+  assert.equal(res.body.last_bodyweight, true);
+  assert.deepEqual(res.body.last_sets, [
+    { weight: 12.5, reps: 10, set_number: 1, rating: 2, is_bodyweight: 1 },
+    { weight: 12.5, reps: 10, set_number: 2, rating: 2, is_bodyweight: 1 },
   ]);
 });
 
