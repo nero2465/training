@@ -7,211 +7,72 @@
   <title>EMOM Timer</title>
   <link rel="stylesheet" href="/css/app.css">
   <style>
-    .emom-intro {
-      text-align: center;
-      margin-bottom: 24px;
-    }
-    .emom-intro-icon {
-      font-size: 2.8rem;
-      margin-bottom: 8px;
-    }
-    .emom-intro h2 {
-      font-size: 1.4rem;
-      color: var(--text-primary);
-      margin: 0 0 4px;
-    }
-    .emom-intro p {
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      margin: 0;
-    }
+    .emom-intro { text-align: center; margin-bottom: 24px; }
+    .emom-intro-icon { font-size: 2.8rem; margin-bottom: 8px; }
+    .emom-intro h2 { font-size: 1.4rem; color: var(--text-primary); margin: 0 0 4px; }
+    .emom-intro p { font-size: 0.85rem; color: var(--text-muted); margin: 0; }
 
-    .stepper-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 14px 0;
-      border-bottom: 1px solid var(--border);
-    }
-    .stepper-row:last-of-type {
-      border-bottom: none;
-    }
-    .stepper-label {
-      font-size: 0.95rem;
-      color: var(--text-primary);
-    }
-    .stepper-label small {
-      display: block;
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      margin-top: 2px;
-    }
-    .stepper-controls {
-      display: flex;
-      align-items: center;
-      gap: 0;
-    }
-    .stepper-btn {
-      width: 40px;
-      height: 40px;
-      border: 1px solid var(--border);
-      background: var(--bg-elevated);
-      color: var(--text-primary);
-      font-size: 1.3rem;
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      user-select: none;
-      -webkit-tap-highlight-color: transparent;
-    }
-    .stepper-btn:active {
-      background: var(--border);
-    }
-    .stepper-value {
-      min-width: 60px;
-      text-align: center;
-      font-size: 1.2rem;
-      font-weight: 700;
-      color: var(--text-primary);
-    }
+    .stepper-row { display:flex; align-items:center; justify-content:space-between; padding:14px 0; border-bottom:1px solid var(--border); }
+    .stepper-row:last-of-type { border-bottom:none; }
+    .stepper-label { font-size:0.95rem; color:var(--text-primary); }
+    .stepper-label small { display:block; font-size:0.75rem; color:var(--text-muted); margin-top:2px; }
+    .stepper-controls { display:flex; align-items:center; gap:0; }
+    .stepper-btn { width:40px; height:40px; border:1px solid var(--border); background:var(--bg-elevated); color:var(--text-primary); font-size:1.3rem; border-radius:var(--radius-sm); cursor:pointer; display:flex; align-items:center; justify-content:center; user-select:none; -webkit-tap-highlight-color:transparent; }
+    .stepper-btn:active { background:var(--border); }
+    .stepper-value { min-width:60px; text-align:center; font-size:1.2rem; font-weight:700; color:var(--text-primary); }
+    .interval-info { text-align:center; margin:20px 0; padding:14px; background:var(--bg-elevated); border-radius:var(--radius); border:1px solid var(--accent); }
+    .interval-info-label { font-size:0.8rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px; }
+    .interval-info-value { font-size:2rem; font-weight:700; color:var(--accent); }
 
-    .interval-info {
-      text-align: center;
-      margin: 20px 0;
-      padding: 14px;
-      background: var(--bg-elevated);
-      border-radius: var(--radius);
-      border: 1px solid var(--accent);
-    }
-    .interval-info-label {
-      font-size: 0.8rem;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      margin-bottom: 4px;
-    }
-    .interval-info-value {
-      font-size: 2rem;
-      font-weight: 700;
-      color: var(--accent);
-    }
+    .focus-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:14px; }
+    .focus-btn { padding:10px 8px; border-radius:var(--radius); border:2px solid var(--border); background:var(--bg-elevated); color:var(--text-secondary); font-size:0.82rem; font-weight:600; cursor:pointer; text-align:center; transition:border-color 0.15s, background 0.15s, color 0.15s; -webkit-tap-highlight-color:transparent; line-height:1.4; }
+    .focus-btn.active { border-color:var(--accent); background:rgba(96,165,250,0.1); color:var(--accent); }
+    .focus-btn small { display:block; font-weight:400; opacity:0.75; font-size:0.72rem; }
 
-    /* Timer screen */
-    .emom-round-label {
-      text-align: center;
-      font-size: 1rem;
-      color: var(--text-muted);
-      margin-bottom: 16px;
-      letter-spacing: 0.03em;
-    }
-    .emom-round-value {
-      font-size: 1.4rem;
-      font-weight: 700;
-      color: var(--text-primary);
-    }
+    .ex-section-title { font-size:0.72rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.07em; padding:8px 0 4px; border-top:1px solid var(--border); margin-top:6px; display:flex; align-items:center; gap:6px; }
+    .ex-section-title:first-child { border-top:none; padding-top:0; margin-top:0; }
 
-    .emom-ring-wrapper {
-      position: relative;
-      width: 220px;
-      height: 220px;
-      margin: 0 auto 20px;
-    }
-    .emom-ring-wrapper svg {
-      display: block;
-    }
-    .emom-ring-center {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      text-align: center;
-      pointer-events: none;
-    }
-    .emom-int-elapsed {
-      font-size: 2.6rem;
-      font-weight: 700;
-      color: var(--text-primary);
-      line-height: 1;
-      font-variant-numeric: tabular-nums;
-    }
-    .emom-int-total {
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      margin-top: 4px;
-    }
+    .emom-ex-row { display:flex; align-items:center; gap:8px; padding:7px 6px; border-radius:var(--radius-sm); border:1px solid var(--border); margin-bottom:4px; background:var(--bg-elevated); }
+    .emom-ex-row.selected { border-color:rgba(96,165,250,0.35); background:rgba(96,165,250,0.06); }
+    .emom-ex-name { flex:1; font-size:0.87rem; font-weight:500; }
+    .emom-ex-reps { font-size:0.8rem; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .emom-ex-reps.accent { color:var(--accent); }
+    .emom-ex-reps.muted { color:var(--text-muted); }
+    .emom-ex-order { display:flex; flex-direction:column; gap:1px; }
+    .emom-ex-order button { width:22px; height:18px; font-size:0.6rem; border:1px solid var(--border); background:var(--bg-primary); color:var(--text-secondary); border-radius:3px; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; }
+    .emom-ex-order button:disabled { opacity:0.25; cursor:default; }
+    .other-list-scroll { max-height:160px; overflow-y:auto; }
 
-    .emom-total-row {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 6px;
-      margin-bottom: 28px;
-      font-size: 0.9rem;
-      color: var(--text-muted);
-    }
-    .emom-total-elapsed {
-      font-weight: 600;
-      color: var(--text-secondary);
-      font-variant-numeric: tabular-nums;
-    }
+    .emom-round-label { text-align:center; font-size:1rem; color:var(--text-muted); margin-bottom:10px; letter-spacing:0.03em; }
+    .emom-round-value { font-size:1.4rem; font-weight:700; color:var(--text-primary); }
+    .timer-exercise-box { text-align:center; margin-bottom:10px; padding:8px 14px; background:var(--bg-elevated); border-radius:var(--radius); border:1px solid rgba(96,165,250,0.3); }
+    .timer-ex-name { font-size:1.1rem; font-weight:700; color:var(--text-primary); }
+    .timer-ex-reps { font-size:1rem; color:var(--accent); font-weight:600; margin-top:2px; }
+    .emom-ring-wrapper { position:relative; width:220px; height:220px; margin:0 auto 14px; }
+    .emom-ring-wrapper svg { display:block; }
+    .emom-ring-center { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center; pointer-events:none; }
+    .emom-int-elapsed { font-size:2.6rem; font-weight:700; color:var(--text-primary); line-height:1; font-variant-numeric:tabular-nums; }
+    .emom-int-total { font-size:0.85rem; color:var(--text-muted); margin-top:4px; }
+    .timer-next-list { text-align:center; font-size:0.78rem; color:var(--text-muted); margin-bottom:10px; line-height:1.6; }
+    .emom-total-row { display:flex; justify-content:center; align-items:center; gap:6px; margin-bottom:24px; font-size:0.9rem; color:var(--text-muted); }
+    .emom-total-elapsed { font-weight:600; color:var(--text-secondary); font-variant-numeric:tabular-nums; }
+    .emom-actions { display:flex; gap:12px; justify-content:center; }
 
-    .emom-actions {
-      display: flex;
-      gap: 12px;
-      justify-content: center;
-    }
+    .emom-done-wrap { text-align:center; padding:24px 0; }
+    .emom-done-icon { font-size:3.5rem; margin-bottom:12px; }
+    .emom-done-title { font-size:1.5rem; font-weight:700; color:var(--text-primary); margin-bottom:8px; }
+    .emom-done-sub { font-size:1rem; color:var(--text-muted); margin-bottom:32px; }
+    .emom-done-stats { display:flex; justify-content:center; gap:32px; margin-bottom:32px; }
+    .emom-done-stat { text-align:center; }
+    .emom-done-stat-value { font-size:2rem; font-weight:700; color:var(--accent); }
+    .emom-done-stat-label { font-size:0.8rem; color:var(--text-muted); margin-top:2px; }
+    .emom-done-btns { display:flex; flex-direction:column; gap:12px; max-width:280px; margin:0 auto; }
 
-    /* Done screen */
-    .emom-done-wrap {
-      text-align: center;
-      padding: 24px 0;
-    }
-    .emom-done-icon {
-      font-size: 3.5rem;
-      margin-bottom: 12px;
-    }
-    .emom-done-title {
-      font-size: 1.5rem;
-      font-weight: 700;
-      color: var(--text-primary);
-      margin-bottom: 8px;
-    }
-    .emom-done-sub {
-      font-size: 1rem;
-      color: var(--text-muted);
-      margin-bottom: 32px;
-    }
-    .emom-done-stats {
-      display: flex;
-      justify-content: center;
-      gap: 32px;
-      margin-bottom: 32px;
-    }
-    .emom-done-stat {
-      text-align: center;
-    }
-    .emom-done-stat-value {
-      font-size: 2rem;
-      font-weight: 700;
-      color: var(--accent);
-    }
-    .emom-done-stat-label {
-      font-size: 0.8rem;
-      color: var(--text-muted);
-      margin-top: 2px;
-    }
-    .emom-done-btns {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      max-width: 280px;
-      margin: 0 auto;
-    }
+    #flash-overlay { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:9000; transition:opacity 0.07s ease-out; }
   </style>
 </head>
 <body>
+  <div id="flash-overlay"></div>
   <div class="page">
     <header class="page-header">
       <button class="btn btn-ghost btn-sm" onclick="goBack()">
@@ -224,8 +85,6 @@
     </header>
 
     <main class="page-content">
-
-      <!-- ── Setup Screen ─────────────────────────────── -->
       <div id="setup-screen">
         <div class="emom-intro">
           <div class="emom-intro-icon">⏱</div>
@@ -235,22 +94,15 @@
 
         <div class="card">
           <div class="stepper-row">
-            <div class="stepper-label">
-              Gesamtzeit
-              <small>in Minuten</small>
-            </div>
+            <div class="stepper-label">Gesamtzeit<small>in Minuten</small></div>
             <div class="stepper-controls">
               <button class="stepper-btn" onclick="adjustTotalTime(-1)">−</button>
               <div class="stepper-value" id="setup-total-display">10 min</div>
               <button class="stepper-btn" onclick="adjustTotalTime(1)">+</button>
             </div>
           </div>
-
           <div class="stepper-row">
-            <div class="stepper-label">
-              Runden
-              <small>Intervalle gesamt</small>
-            </div>
+            <div class="stepper-label">Runden<small>Intervalle gesamt</small></div>
             <div class="stepper-controls">
               <button class="stepper-btn" onclick="adjustRounds(-1)">−</button>
               <div class="stepper-value" id="setup-rounds-display">10</div>
@@ -264,33 +116,52 @@
           <div class="interval-info-value" id="setup-interval-display">1:00</div>
         </div>
 
-        <button class="btn btn-primary" style="width:100%; font-size:1.1rem; padding:14px;" onclick="startEmom()">
-          Starten
+        <button class="btn btn-primary" style="width:100%; font-size:1.1rem; padding:14px;" onclick="showExerciseScreen()">
+          Weiter → Übungen wählen
         </button>
       </div>
 
-      <!-- ── Timer Screen ─────────────────────────────── -->
+      <div id="exercise-screen" class="hidden">
+        <div style="text-align:center; font-size:0.82rem; color:var(--text-muted); margin-bottom:12px;" id="ex-screen-info"></div>
+
+        <div class="focus-grid">
+          <button class="focus-btn active" data-focus="conditioning" onclick="setFocus('conditioning')">🏃 Conditioning<small>Ausdauer</small></button>
+          <button class="focus-btn" data-focus="strength" onclick="setFocus('strength')">🏋️ Kraft<small>Barbell & Strength</small></button>
+          <button class="focus-btn" data-focus="core" onclick="setFocus('core')">🤸 Core<small>Gymnastics</small></button>
+          <button class="focus-btn" data-focus="engine" onclick="setFocus('engine')">⚡ Engine<small>Kraftausdauer</small></button>
+        </div>
+
+        <div class="card" style="padding:10px 12px;">
+          <div class="ex-section-title">✅ Ausgewählt — <span id="selected-count">0</span> Übungen</div>
+          <div id="selected-exercises-list"></div>
+
+          <div class="ex-section-title">Passend zum Fokus</div>
+          <div id="focus-exercises-list"></div>
+
+          <div class="ex-section-title">Weitere Übungen</div>
+          <div id="other-exercises-list" class="other-list-scroll"></div>
+        </div>
+
+        <div style="display:flex; gap:8px; margin-top:14px;">
+          <button class="btn btn-secondary" style="flex:0 0 auto; padding:13px 16px;" onclick="backToSetup()">← Zurück</button>
+          <button class="btn btn-primary" id="exercise-start-btn" style="flex:1; font-size:1rem; padding:13px;" onclick="startEmom()">Starten</button>
+        </div>
+      </div>
+
       <div id="timer-screen" class="hidden">
         <div class="emom-round-label">
           <span class="emom-round-value" id="round-display">Runde 1 / 10</span>
         </div>
 
+        <div id="timer-exercise-box" class="timer-exercise-box hidden">
+          <div class="timer-ex-name" id="timer-ex-name"></div>
+          <div class="timer-ex-reps" id="timer-ex-reps"></div>
+        </div>
+
         <div class="emom-ring-wrapper">
           <svg viewBox="0 0 220 220" width="220" height="220">
-            <circle cx="110" cy="110" r="98"
-              fill="none"
-              stroke="var(--border)"
-              stroke-width="10"/>
-            <circle id="emom-ring-progress"
-              cx="110" cy="110" r="98"
-              fill="none"
-              stroke="var(--accent)"
-              stroke-width="10"
-              stroke-linecap="round"
-              stroke-dasharray="615.75"
-              stroke-dashoffset="615.75"
-              transform="rotate(-90 110 110)"
-              style="transition: stroke-dashoffset 0.9s linear;"/>
+            <circle cx="110" cy="110" r="98" fill="none" stroke="var(--border)" stroke-width="10"/>
+            <circle id="emom-ring-progress" cx="110" cy="110" r="98" fill="none" stroke="var(--accent)" stroke-width="10" stroke-linecap="round" stroke-dasharray="615.75" stroke-dashoffset="615.75" transform="rotate(-90 110 110)" style="transition: stroke-dashoffset 0.9s linear;"/>
           </svg>
           <div class="emom-ring-center">
             <div class="emom-int-elapsed" id="interval-elapsed">0:00</div>
@@ -299,6 +170,8 @@
           </div>
         </div>
 
+        <div class="timer-next-list" id="timer-next-list" style="display:none;"></div>
+
         <div class="emom-total-row">
           <span>Gesamt</span>
           <span class="emom-total-elapsed" id="total-elapsed">0:00</span>
@@ -306,16 +179,11 @@
         </div>
 
         <div class="emom-actions">
-          <button class="btn btn-primary" id="pause-btn" onclick="togglePause()" style="min-width:130px;">
-            ⏸ Pause
-          </button>
-          <button class="btn btn-secondary" onclick="abortEmom()">
-            Abbrechen
-          </button>
+          <button class="btn btn-primary" id="pause-btn" onclick="togglePause()" style="min-width:130px;">⏸ Pause</button>
+          <button class="btn btn-secondary" onclick="abortEmom()">Abbrechen</button>
         </div>
       </div>
 
-      <!-- ── Done Screen ──────────────────────────────── -->
       <div id="done-screen" class="hidden">
         <div class="emom-done-wrap">
           <div class="emom-done-icon">🎉</div>
@@ -334,16 +202,11 @@
           </div>
 
           <div class="emom-done-btns">
-            <button class="btn btn-primary" onclick="resetEmom()" style="font-size:1rem; padding:13px;">
-              Neue Runde
-            </button>
-            <button class="btn btn-secondary" onclick="window.location.href='/dashboard.html'" style="font-size:1rem; padding:13px;">
-              Zur Startseite
-            </button>
+            <button class="btn btn-primary" onclick="resetEmom()" style="font-size:1rem; padding:13px;">Neue Runde</button>
+            <button class="btn btn-secondary" onclick="window.location.href='/dashboard.html'" style="font-size:1rem; padding:13px;">Zur Startseite</button>
           </div>
         </div>
       </div>
-
     </main>
   </div>
 

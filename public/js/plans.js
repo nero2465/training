@@ -79,7 +79,7 @@ function createPlanElement(plan) {
           ${escapeHtml(plan.name)}
         </div>
         <div id="plan-name-edit-${plan.id}" style="display:none;">
-          <input type="text" class="inline-edit-input" id="plan-name-input-${plan.id}" value="${escapeHtml(plan.name)}"
+          <input type="text" class="inline-edit-input" id="plan-name-input-${plan.id}" value="${escapeAttr(plan.name)}"
             onblur="savePlanName(${plan.id})" onkeydown="if(event.key==='Enter')savePlanName(${plan.id});if(event.key==='Escape')cancelPlanName(${plan.id})">
         </div>
         ${plan.description ? `<div class="text-secondary" style="font-size:0.8rem;">${escapeHtml(plan.description)}</div>` : ''}
@@ -141,7 +141,7 @@ function createSessionElement(session) {
       <div class="session-editor-label" id="session-label-display-${session.id}" style="cursor:pointer;" onclick="event.stopPropagation(); startEditSessionLabel(${session.id})" title="Klicken zum Umbenennen">${escapeHtml(session.session_label)}</div>
       <input type="text" class="session-label-input" id="session-label-input-${session.id}"
         style="display:none; width:48px; font-size:0.85rem; padding:2px 4px; border:1px solid var(--accent); border-radius:4px; background:var(--bg-primary); color:var(--text-primary); text-align:center;"
-        value="${escapeHtml(session.session_label)}"
+        value="${escapeAttr(session.session_label)}"
         onclick="event.stopPropagation()"
         onblur="saveSessionLabel(${session.id})"
         onkeydown="handleSessionLabelKey(event, ${session.id})">
@@ -790,10 +790,10 @@ function openCatalogEdit(exerciseId) {
     row.innerHTML = `
       <div style="flex:1; padding:4px 0;">
         <div class="form-group" style="margin-bottom:6px;">
-          <input type="text" class="form-control" id="catalog-edit-name-${exerciseId}" value="${escapeHtml(ex.name)}" placeholder="Name" style="font-size:0.85rem; padding:6px 8px;">
+          <input type="text" class="form-control" id="catalog-edit-name-${exerciseId}" value="${escapeAttr(ex.name)}" placeholder="Name" style="font-size:0.85rem; padding:6px 8px;">
         </div>
         <div class="form-group" style="margin-bottom:6px;">
-          <input type="text" class="form-control" id="catalog-edit-muscles-${exerciseId}" value="${escapeHtml(ex.muscle_groups || '')}" placeholder="Muskelgruppen" style="font-size:0.85rem; padding:6px 8px;">
+          <input type="text" class="form-control" id="catalog-edit-muscles-${exerciseId}" value="${escapeAttr(ex.muscle_groups || '')}" placeholder="Muskelgruppen" style="font-size:0.85rem; padding:6px 8px;">
         </div>
         <div class="form-group" style="margin-bottom:8px;">
           <textarea class="form-control" id="catalog-edit-tip-${exerciseId}" rows="2" placeholder="Technik-Hinweis" style="font-size:0.82rem; padding:6px 8px; resize:vertical;">${escapeHtml(ex.technique_tip || '')}</textarea>
@@ -985,11 +985,225 @@ document.addEventListener('DOMContentLoaded', () => {
   if (gifModal) gifModal.addEventListener('click', e => { if (e.target === gifModal) closeGifPicker(); });
 });
 
+const CF_FOCUS_OPTIONS = [
+  { id: 'conditioning', label: 'Conditioning' },
+  { id: 'strength', label: 'Kraft' },
+  { id: 'core', label: 'Core' },
+  { id: 'engine', label: 'Engine' },
+];
+const CF_UNITS = ['Wdh.', 'Cal', 'Sek.', 'Runden', 'Sprint'];
+
+let cfCatalogLoaded = false;
+
+function toggleCrossfitCatalog() {
+  const body = document.getElementById('crossfit-catalog-body');
+  const btn = document.getElementById('crossfit-catalog-toggle-btn');
+  const icon = document.getElementById('crossfit-catalog-toggle-icon');
+  if (!body) return;
+
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  if (btn) btn.setAttribute('aria-expanded', String(!isOpen));
+  if (icon) icon.style.transform = isOpen ? '' : 'rotate(90deg)';
+
+  if (!isOpen && !cfCatalogLoaded) {
+    loadCrossfitCatalog();
+  }
+}
+
+async function loadCrossfitCatalog() {
+  const list = document.getElementById('crossfit-catalog-list');
+  if (!list) return;
+  list.innerHTML = '<div class="loading" style="padding:12px;"><div class="spinner" style="width:20px;height:20px;"></div></div>';
+
+  try {
+    const exercises = await API.get('/api/exercises?category=crossfit');
+    cfCatalogLoaded = true;
+    renderCrossfitCatalog(exercises);
+  } catch (e) {
+    list.innerHTML = `<p style="padding:8px;color:#ef4444;">Fehler: ${e.message}</p>`;
+  }
+}
+
+function renderCrossfitCatalog(exercises) {
+  const list = document.getElementById('crossfit-catalog-list');
+  if (!list) return;
+  list.innerHTML = '';
+
+  if (exercises.length === 0) {
+    list.innerHTML = '<p style="padding:8px;color:var(--text-muted);">Keine CrossFit-Übungen vorhanden.</p>';
+    return;
+  }
+
+  exercises.forEach(ex => list.appendChild(createCrossfitRow(ex)));
+}
+
+function createCrossfitRow(ex) {
+  const div = document.createElement('div');
+  div.className = 'catalog-row';
+  div.id = `cf-row-${ex.id}`;
+
+  const focuses = (ex.emom_focus || '').split(',').map(f => f.trim()).filter(Boolean);
+  const badges = focuses.map(f => {
+    const opt = CF_FOCUS_OPTIONS.find(item => item.id === f);
+    return `<span style="font-size:0.7rem;background:rgba(96,165,250,0.12);color:var(--accent);border-radius:4px;padding:1px 5px;">${escapeHtml(opt ? opt.label : f)}</span>`;
+  }).join(' ');
+
+  div.innerHTML = `
+    <div class="catalog-row-info" id="cf-info-${ex.id}">
+      <div style="font-weight:600;font-size:0.9rem;">${escapeHtml(ex.name)}</div>
+      <div style="font-size:0.75rem;color:var(--text-muted);margin-top:3px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+        ${badges || '<span style="opacity:0.5;">Kein Fokus</span>'}
+        <span style="opacity:0.4;">·</span>
+        <span>${ex.emom_base_reps || '?'} ${escapeHtml(ex.emom_reps_unit || 'Wdh.')} / 60s</span>
+      </div>
+    </div>
+    <div class="catalog-row-actions">
+      <button class="btn btn-ghost btn-sm" onclick="startCrossfitEdit(${ex.id})" title="Bearbeiten" style="padding:4px 6px;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+        </svg>
+      </button>
+      <button class="btn btn-ghost btn-sm" onclick="deleteCrossfitExercise(${ex.id}, '${escapeJsString(ex.name)}')" title="Löschen" style="padding:4px 6px;color:#ef4444;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+        </svg>
+      </button>
+    </div>
+  `;
+
+  return div;
+}
+
+function startCrossfitEdit(exerciseId) {
+  API.get(`/api/exercises/${exerciseId}`).then(ex => {
+    const row = document.getElementById(`cf-row-${exerciseId}`);
+    const info = document.getElementById(`cf-info-${exerciseId}`);
+    if (!row || !info) return;
+
+    const focuses = (ex.emom_focus || '').split(',').map(f => f.trim()).filter(Boolean);
+    const focusBoxes = CF_FOCUS_OPTIONS.map(opt => `
+      <label style="display:inline-flex;align-items:center;gap:4px;margin-right:10px;font-size:0.82rem;cursor:pointer;">
+        <input type="checkbox" id="cfe-focus-${exerciseId}-${opt.id}" ${focuses.includes(opt.id) ? 'checked' : ''} style="accent-color:var(--accent);">
+        ${escapeHtml(opt.label)}
+      </label>
+    `).join('');
+    const unitOptions = CF_UNITS.map(unit =>
+      `<option value="${escapeAttr(unit)}" ${(ex.emom_reps_unit || 'Wdh.') === unit ? 'selected' : ''}>${escapeHtml(unit)}</option>`
+    ).join('');
+
+    info.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:6px;padding:2px 0;">
+        <input type="text" class="form-control" id="cfe-name-${exerciseId}" value="${escapeAttr(ex.name)}" style="font-size:0.85rem;padding:5px 8px;">
+        <div style="font-size:0.74rem;color:var(--text-muted);">Fokus (Mehrfachauswahl):</div>
+        <div style="display:flex;flex-wrap:wrap;gap:2px;">${focusBoxes}</div>
+        <div style="display:flex;gap:8px;align-items:flex-end;margin-top:2px;">
+          <div style="flex:1;">
+            <div style="font-size:0.74rem;color:var(--text-muted);margin-bottom:2px;">Wdh. pro 60s:</div>
+            <input type="number" class="form-control" id="cfe-reps-${exerciseId}" value="${ex.emom_base_reps || ''}" min="1" style="font-size:0.85rem;padding:5px 8px;">
+          </div>
+          <div style="flex:1;">
+            <div style="font-size:0.74rem;color:var(--text-muted);margin-bottom:2px;">Einheit:</div>
+            <select class="form-control" id="cfe-unit-${exerciseId}" style="font-size:0.85rem;padding:5px 8px;">${unitOptions}</select>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:4px;">
+          <button class="btn btn-primary btn-sm" onclick="saveCrossfitEdit(${exerciseId})" style="flex:1;padding:6px;">Speichern</button>
+          <button class="btn btn-secondary btn-sm" onclick="loadCrossfitCatalog()" style="flex:1;padding:6px;">Abbrechen</button>
+        </div>
+      </div>
+    `;
+
+    row.className = 'catalog-row catalog-row-editing';
+    setTimeout(() => document.getElementById(`cfe-name-${exerciseId}`)?.focus(), 50);
+  }).catch(e => showToast('Fehler: ' + e.message, 'error'));
+}
+
+async function saveCrossfitEdit(exerciseId) {
+  const name = document.getElementById(`cfe-name-${exerciseId}`)?.value?.trim();
+  if (!name) {
+    showToast('Name darf nicht leer sein', 'error');
+    return;
+  }
+
+  const focuses = CF_FOCUS_OPTIONS
+    .filter(opt => document.getElementById(`cfe-focus-${exerciseId}-${opt.id}`)?.checked)
+    .map(opt => opt.id);
+  const emom_base_reps = parseInt(document.getElementById(`cfe-reps-${exerciseId}`)?.value || '0', 10);
+  const emom_reps_unit = document.getElementById(`cfe-unit-${exerciseId}`)?.value || 'Wdh.';
+
+  try {
+    await API.put(`/api/exercises/${exerciseId}`, {
+      name,
+      emom_focus: focuses.join(','),
+      emom_base_reps: emom_base_reps || null,
+      emom_reps_unit,
+    });
+    showToast('Gespeichert', 'success');
+    cfCatalogLoaded = false;
+    loadCrossfitCatalog();
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
+}
+
+async function deleteCrossfitExercise(exerciseId, name) {
+  if (!confirm(`„${name}” löschen?`)) return;
+
+  try {
+    await API.delete(`/api/exercises/${exerciseId}`);
+    showToast(`${name} gelöscht`, 'success');
+    cfCatalogLoaded = false;
+    loadCrossfitCatalog();
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
+}
+
+async function addCrossfitExercise() {
+  const name = prompt('Name der neuen CrossFit-Übung:')?.trim();
+  if (!name) return;
+
+  try {
+    await API.post('/api/exercises', {
+      name,
+      category: 'crossfit',
+      emom_focus: 'conditioning',
+      emom_base_reps: 10,
+      emom_reps_unit: 'Wdh.',
+    });
+    showToast('Übung erstellt', 'success');
+    cfCatalogLoaded = false;
+    loadCrossfitCatalog();
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
+}
+
 function escapeHtml(str) {
   if (!str) return '';
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+function escapeAttr(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function escapeJsString(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n');
 }
 
 init();

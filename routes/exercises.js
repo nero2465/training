@@ -12,15 +12,21 @@ function requireAuth(req, res, next) {
   next();
 }
 
-// GET /api/exercises - only active exercises (for exercise picker)
+// GET /api/exercises
+// ?category=crossfit  -> CrossFit exercises only
+// ?all=true           -> all non-CrossFit exercises
+// default             -> active non-CrossFit exercises
 router.get('/exercises', requireAuth, (req, res) => {
   const db = getDb();
   const all = req.query.all === 'true';
+  const category = req.query.category;
   let exercises;
-  if (all) {
-    exercises = db.prepare('SELECT * FROM exercises ORDER BY name').all();
+  if (category === 'crossfit') {
+    exercises = db.prepare("SELECT * FROM exercises WHERE category = 'crossfit' ORDER BY name").all();
+  } else if (all) {
+    exercises = db.prepare("SELECT * FROM exercises WHERE category IS NULL OR category != 'crossfit' ORDER BY name").all();
   } else {
-    exercises = db.prepare('SELECT * FROM exercises WHERE active IS NULL OR active = 1 ORDER BY name').all();
+    exercises = db.prepare("SELECT * FROM exercises WHERE (category IS NULL OR category != 'crossfit') AND (active IS NULL OR active = 1) ORDER BY name").all();
   }
   res.json(exercises);
 });
@@ -54,13 +60,22 @@ router.get('/exercises/:id', requireAuth, (req, res) => {
 
 // POST /api/exercises
 router.post('/exercises', requireAuth, (req, res) => {
-  const { name, muscle_groups, technique_tip } = req.body;
+  const { name, muscle_groups, technique_tip, category, emom_focus, emom_base_reps, emom_reps_unit } = req.body;
   if (!name || !name.trim()) return res.status(400).json({ error: 'Name erforderlich' });
 
   const db = getDb();
-  const result = db.prepare(
-    'INSERT INTO exercises (name, muscle_groups, technique_tip) VALUES (?, ?, ?)'
-  ).run(name.trim(), muscle_groups || null, technique_tip || null);
+  const result = db.prepare(`
+    INSERT INTO exercises (name, muscle_groups, technique_tip, category, emom_focus, emom_base_reps, emom_reps_unit)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    name.trim(),
+    muscle_groups || null,
+    technique_tip || null,
+    category || null,
+    emom_focus || null,
+    emom_base_reps ? parseInt(emom_base_reps, 10) : null,
+    emom_reps_unit || null
+  );
 
   const exercise = db.prepare('SELECT * FROM exercises WHERE id = ?').get(result.lastInsertRowid);
   res.status(201).json(exercise);
@@ -72,11 +87,22 @@ router.put('/exercises/:id', requireAuth, (req, res) => {
   const exercise = db.prepare('SELECT * FROM exercises WHERE id = ?').get(req.params.id);
   if (!exercise) return res.status(404).json({ error: 'Exercise not found' });
 
-  const { name, muscle_groups, technique_tip, active, gif_path, increment_kg } = req.body;
+  const {
+    name,
+    muscle_groups,
+    technique_tip,
+    active,
+    gif_path,
+    increment_kg,
+    emom_focus,
+    emom_base_reps,
+    emom_reps_unit,
+  } = req.body;
 
   db.prepare(`
     UPDATE exercises
-    SET name = ?, muscle_groups = ?, technique_tip = ?, active = ?, gif_path = ?, increment_kg = ?
+    SET name = ?, muscle_groups = ?, technique_tip = ?, active = ?, gif_path = ?, increment_kg = ?,
+        emom_focus = ?, emom_base_reps = ?, emom_reps_unit = ?
     WHERE id = ?
   `).run(
     name !== undefined ? name.trim() : exercise.name,
@@ -85,6 +111,9 @@ router.put('/exercises/:id', requireAuth, (req, res) => {
     active !== undefined ? (active ? 1 : 0) : (exercise.active !== null ? exercise.active : 1),
     gif_path !== undefined ? (gif_path || null) : exercise.gif_path,
     increment_kg !== undefined ? (increment_kg > 0 ? increment_kg : null) : exercise.increment_kg,
+    emom_focus !== undefined ? (emom_focus || null) : exercise.emom_focus,
+    emom_base_reps !== undefined ? (emom_base_reps ? parseInt(emom_base_reps, 10) : null) : exercise.emom_base_reps,
+    emom_reps_unit !== undefined ? (emom_reps_unit || null) : exercise.emom_reps_unit,
     exercise.id
   );
 

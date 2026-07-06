@@ -101,6 +101,10 @@ function runMigrations() {
     'ALTER TABLE exercises ADD COLUMN increment_kg REAL',
     'ALTER TABLE workout_sets ADD COLUMN exercise_name TEXT',
     'ALTER TABLE workout_sets ADD COLUMN exercise_id_snapshot INTEGER',
+    'ALTER TABLE session_exercises ADD COLUMN archived INTEGER DEFAULT 0',
+    'ALTER TABLE exercises ADD COLUMN emom_focus TEXT',
+    'ALTER TABLE exercises ADD COLUMN emom_base_reps INTEGER',
+    'ALTER TABLE exercises ADD COLUMN emom_reps_unit TEXT',
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch(e) { /* column already exists */ }
@@ -108,6 +112,7 @@ function runMigrations() {
   seedBuiltinExercises();
   deduplicateExercises();
   seedExerciseIncrements();
+  seedCrossfitExercises();
 }
 
 // Sets larger default weight increments for big compound lifts (only where the
@@ -122,6 +127,66 @@ function seedExerciseIncrements() {
   const run = db.transaction(() => {
     for (const name of compounds) stmt.run(name);
   });
+  run();
+}
+
+function seedCrossfitExercises() {
+  const stmt = db.prepare(`
+    INSERT OR IGNORE INTO exercises (name, category, emom_focus, emom_base_reps, emom_reps_unit)
+    VALUES (?, 'crossfit', ?, ?, ?)
+  `);
+
+  const run = db.transaction(() => {
+    const list = [
+      ['Burpees', 'conditioning,engine', 8, 'Wdh.'],
+      ['Air Squats', 'conditioning,engine', 20, 'Wdh.'],
+      ['Push-ups', 'conditioning,core', 15, 'Wdh.'],
+      ['Sit-ups / AbMat', 'core', 20, 'Wdh.'],
+      ['Box Jumps', 'conditioning', 10, 'Wdh.'],
+      ['Lunges', 'conditioning,engine', 16, 'Wdh.'],
+      ['Plank Hold', 'core', 45, 'Sek.'],
+      ['Pull-ups', 'strength,core', 8, 'Wdh.'],
+      ['Toes-to-Bar', 'core', 8, 'Wdh.'],
+      ['Hanging Knee Raises', 'core', 12, 'Wdh.'],
+      ['Handstand Push-ups', 'strength,core', 5, 'Wdh.'],
+      ['Wall Walks', 'core,strength', 3, 'Wdh.'],
+      ['Hollow Hold', 'core', 30, 'Sek.'],
+      ['Deadlifts', 'strength', 5, 'Wdh.'],
+      ['Front Squats', 'strength', 5, 'Wdh.'],
+      ['Back Squats', 'strength', 5, 'Wdh.'],
+      ['Overhead Squats', 'strength', 5, 'Wdh.'],
+      ['Push Press', 'strength,engine', 6, 'Wdh.'],
+      ['Strict Press', 'strength', 5, 'Wdh.'],
+      ['Thrusters', 'strength,engine', 7, 'Wdh.'],
+      ['Power Cleans', 'strength', 5, 'Wdh.'],
+      ['Squat Cleans', 'strength', 3, 'Wdh.'],
+      ['Power Snatches', 'strength', 3, 'Wdh.'],
+      ['Clean & Jerks', 'strength', 3, 'Wdh.'],
+      ['Hang Power Cleans', 'strength,engine', 5, 'Wdh.'],
+      ['Hang Power Snatches', 'strength', 5, 'Wdh.'],
+      ['Kettlebell Swings', 'conditioning,engine', 15, 'Wdh.'],
+      ['Goblet Squats', 'engine', 12, 'Wdh.'],
+      ['Dumbbell Snatches', 'engine,strength', 10, 'Wdh.'],
+      ['Dumbbell Clean & Jerk', 'engine,strength', 8, 'Wdh.'],
+      ['Dumbbell Thrusters', 'engine', 10, 'Wdh.'],
+      ["Farmer's Carry", 'engine', 40, 'Sek.'],
+      ['Russian Twists', 'core', 20, 'Wdh.'],
+      ['Single-arm OH Lunges', 'engine,core', 10, 'Wdh.'],
+      ['Row Calories', 'conditioning', 12, 'Cal'],
+      ['Bike / Assault Bike', 'conditioning', 12, 'Cal'],
+      ['SkiErg Calories', 'conditioning', 10, 'Cal'],
+      ['Double Unders', 'conditioning', 30, 'Wdh.'],
+      ['Single Unders', 'conditioning', 60, 'Wdh.'],
+      ['Shuttle Runs', 'conditioning', 2, 'Runden'],
+      ['Sprints', 'conditioning', 1, 'Sprint'],
+      ['Wall Balls', 'conditioning,engine', 12, 'Wdh.'],
+    ];
+
+    for (const [name, focus, reps, unit] of list) {
+      stmt.run(name, focus, reps, unit);
+    }
+  });
+
   run();
 }
 

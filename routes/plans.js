@@ -166,7 +166,7 @@ router.get('/sessions/:id/exercises', requireAuth, (req, res) => {
     SELECT se.*, e.name, e.muscle_groups, e.technique_tip, e.gif_path
     FROM session_exercises se
     JOIN exercises e ON e.id = se.exercise_id
-    WHERE se.session_id = ?
+    WHERE se.session_id = ? AND (se.archived IS NULL OR se.archived = 0)
     ORDER BY se.order_index
   `).all(session.id);
 
@@ -259,7 +259,16 @@ router.delete('/session-exercises/:id', requireAuth, (req, res) => {
 
   if (!se) return res.status(404).json({ error: 'Session exercise not found' });
 
-  db.prepare('DELETE FROM session_exercises WHERE id = ?').run(se.id);
+  const usage = db.prepare(
+    'SELECT COUNT(*) as cnt FROM workout_sets WHERE session_exercise_id = ?'
+  ).get(se.id);
+
+  if (usage.cnt > 0) {
+    db.prepare('UPDATE session_exercises SET archived = 1 WHERE id = ?').run(se.id);
+  } else {
+    db.prepare('DELETE FROM session_exercises WHERE id = ?').run(se.id);
+  }
+
   res.json({ success: true });
 });
 

@@ -128,8 +128,8 @@ function buildSessionsHTML(sessions, planName) {
       <div class="session-expandable" id="session-expandable-${session.id}">
         <div class="session-card-header"
              data-session-id="${session.id}"
-             data-session-label="${escapeHtml(session.session_label)}"
-             data-plan-name="${escapeHtml(planName)}">
+             data-session-label="${escapeAttr(session.session_label)}"
+             data-plan-name="${escapeAttr(planName)}">
           <div class="session-label">
             <div class="session-badge">${escapeHtml(session.session_label)}</div>
             <div class="session-info">
@@ -145,7 +145,7 @@ function buildSessionsHTML(sessions, planName) {
           <div class="session-exercise-list" id="session-exercises-${session.id}">
             <div class="loading" style="padding:8px;"><div class="spinner" style="width:16px;height:16px;"></div></div>
           </div>
-          <button class="btn btn-primary btn-full session-start-btn" onclick="startTraining(${session.id}, '${escapeHtml(planName)}', '${escapeHtml(session.session_label)}')">
+          <button class="btn btn-primary btn-full session-start-btn" onclick="startTraining(${session.id}, '${escapeJsString(planName)}', '${escapeJsString(session.session_label)}')">
             Training starten
           </button>
         </div>
@@ -221,6 +221,25 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+function escapeAttr(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function escapeJsString(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n');
 }
 
 // Initialize
