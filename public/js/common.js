@@ -2,11 +2,11 @@
    Common Utilities - Shared across all pages
    ============================================================ */
 
-const APP_VERSION = '2.3';
+const APP_VERSION = '2.4';
 
 // API helper
 const API = {
-  async request(method, url, body = null) {
+  async request(method, url, body = null, timeoutMs = 20000) {
     const opts = {
       method,
       headers: { 'Content-Type': 'application/json' },
@@ -15,8 +15,34 @@ const API = {
     if (body !== null) {
       opts.body = JSON.stringify(body);
     }
-    const res = await fetch(url, opts);
-    const data = await res.json();
+
+    // Abort a stalled request instead of hanging forever (flaky mobile/LAN).
+    // Without this the caller's button stays disabled and taps do nothing.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    opts.signal = controller.signal;
+
+    let res;
+    try {
+      res = await fetch(url, opts);
+    } catch (e) {
+      clearTimeout(timer);
+      if (e.name === 'AbortError') {
+        throw new Error('Zeitüberschreitung – Server nicht erreichbar');
+      }
+      throw new Error('Netzwerkfehler – Server nicht erreichbar');
+    }
+    clearTimeout(timer);
+
+    let data;
+    try {
+      data = await res.json();
+    } catch (e) {
+      // Non-JSON response (e.g. HTML error page) — avoid the cryptic
+      // "Unexpected token '<'" parse error and surface something usable.
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      throw new Error('Ungültige Serverantwort');
+    }
     if (!res.ok) {
       throw new Error(data.error || `HTTP ${res.status}`);
     }

@@ -80,16 +80,72 @@ async function loadExercises() {
       skippedSets[ex.id] = new Set();
     });
 
+    // Re-hydrate any sets already saved for this workout so a page reload /
+    // F5 on the phone doesn't lose progress (the server is the source of truth).
+    await restoreLoggedSets();
+
     // Build progress dots
     buildProgressTrack();
 
-    // Show first exercise
+    // Resume at the first exercise that still has open sets
     document.getElementById('loading-state').style.display = 'none';
-    showExercise(0);
+    showExercise(firstIncompleteExerciseIndex());
   } catch (e) {
     document.getElementById('loading-state').innerHTML =
       `<p class="text-danger">Fehler: ${e.message}</p>`;
   }
+}
+
+// Rebuild loggedSets/skippedSets from the sets already persisted for this
+// workout. Called on every load so a reload restores the in-progress session.
+async function restoreLoggedSets() {
+  let data;
+  try {
+    data = await API.get(`/api/workouts/${workoutId}`);
+  } catch (e) {
+    // Non-fatal: continue with an empty session rather than blocking training.
+    console.warn('Fortschritt konnte nicht wiederhergestellt werden:', e);
+    return;
+  }
+  if (!data || !Array.isArray(data.sets)) return;
+
+  for (const s of data.sets) {
+    const exId = s.session_exercise_id;
+    if (!(exId in loggedSets)) continue; // exercise no longer part of session
+    if (Number(s.skipped) === 1) {
+      skippedSets[exId].add(s.set_number);
+    } else {
+      loggedSets[exId].push({
+        set_number: s.set_number,
+        weight: s.weight,
+        reps: s.reps,
+        is_bodyweight: s.is_bodyweight ? 1 : 0,
+        id: s.id,
+        rating: s.rating ?? null
+      });
+      if (s.is_bodyweight) bodyweightSelections[exId] = true;
+    }
+  }
+
+  // Keep each exercise's sets ordered by set number
+  for (const exId of Object.keys(loggedSets)) {
+    loggedSets[exId].sort((a, b) => a.set_number - b.set_number);
+  }
+
+  const restored = data.sets.length;
+  if (restored > 0) {
+    showToast(`${restored} bereits erfasste ${restored === 1 ? 'Satz' : 'Sätze'} wiederhergestellt`, 'info');
+  }
+}
+
+// First exercise index that still has unfinished sets (for resume-after-reload).
+function firstIncompleteExerciseIndex() {
+  for (let i = 0; i < exercises.length; i++) {
+    const ex = exercises[i];
+    const done = (loggedSets[ex.id]?.length || 0) + (skippedSets[ex.id]?.size || 0);
+    if (done < ex.sets) return i;
+  }
+  return 0; // everything done — land on first, user can end training
 }
 
 function buildProgressTrack() {
