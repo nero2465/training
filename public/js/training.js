@@ -35,6 +35,8 @@ let currentRating = null;      // 1/2/3 selected in rest overlay
 let lastSetId = null;          // ID of last saved set, for updating rating/note
 let restMinimized = false;
 let skippedSets = {};          // { sessionExerciseId: Set of set numbers skipped }
+let recommendedWeights = {};   // { sessionExerciseId: recommended weight } for smart rating pre-select
+let suggestedRating = 2;       // computed from last logged set vs targets
 
 async function init() {
   // Ensure audio ctx available
@@ -80,16 +82,72 @@ async function loadExercises() {
       skippedSets[ex.id] = new Set();
     });
 
+    // Re-hydrate any sets already saved for this workout so a page reload /
+    // F5 on the phone doesn't lose progress (the server is the source of truth).
+    await restoreLoggedSets();
+
     // Build progress dots
     buildProgressTrack();
 
-    // Show first exercise
+    // Resume at the first exercise that still has open sets
     document.getElementById('loading-state').style.display = 'none';
-    showExercise(0);
+    showExercise(firstIncompleteExerciseIndex());
   } catch (e) {
     document.getElementById('loading-state').innerHTML =
       `<p class="text-danger">Fehler: ${e.message}</p>`;
   }
+}
+
+// Rebuild loggedSets/skippedSets from the sets already persisted for this
+// workout. Called on every load so a reload restores the in-progress session.
+async function restoreLoggedSets() {
+  let data;
+  try {
+    data = await API.get(`/api/workouts/${workoutId}`);
+  } catch (e) {
+    // Non-fatal: continue with an empty session rather than blocking training.
+    console.warn('Fortschritt konnte nicht wiederhergestellt werden:', e);
+    return;
+  }
+  if (!data || !Array.isArray(data.sets)) return;
+
+  for (const s of data.sets) {
+    const exId = s.session_exercise_id;
+    if (!(exId in loggedSets)) continue; // exercise no longer part of session
+    if (Number(s.skipped) === 1) {
+      skippedSets[exId].add(s.set_number);
+    } else {
+      loggedSets[exId].push({
+        set_number: s.set_number,
+        weight: s.weight,
+        reps: s.reps,
+        is_bodyweight: s.is_bodyweight ? 1 : 0,
+        id: s.id,
+        rating: s.rating ?? null
+      });
+      if (s.is_bodyweight) bodyweightSelections[exId] = true;
+    }
+  }
+
+  // Keep each exercise's sets ordered by set number
+  for (const exId of Object.keys(loggedSets)) {
+    loggedSets[exId].sort((a, b) => a.set_number - b.set_number);
+  }
+
+  const restored = data.sets.length;
+  if (restored > 0) {
+    showToast(`${restored} bereits erfasste ${restored === 1 ? 'Satz' : 'Sätze'} wiederhergestellt`, 'info');
+  }
+}
+
+// First exercise index that still has unfinished sets (for resume-after-reload).
+function firstIncompleteExerciseIndex() {
+  for (let i = 0; i < exercises.length; i++) {
+    const ex = exercises[i];
+    const done = (loggedSets[ex.id]?.length || 0) + (skippedSets[ex.id]?.size || 0);
+    if (done < ex.sets) return i;
+  }
+  return 0; // everything done — land on first, user can end training
 }
 
 function buildProgressTrack() {
@@ -147,6 +205,12 @@ async function showExercise(index) {
   updateRepsDisplay();
   currentBodyweight = bodyweightSelections[ex.id] === true;
   updateBodyweightDisplay();
+
+  // Never carry the previous exercise's weight over. Resume from this
+  // exercise's own last logged set if present, otherwise start at 0 and
+  // let the recommendation (if any) set it.
+  currentWeight = logged.length > 0 ? (logged[logged.length - 1].weight || 0) : 0;
+  updateWeightDisplay();
 
   // Load recommendation
   await loadRecommendation(ex.id);
@@ -238,6 +302,8 @@ async function loadRecommendation(sessionExerciseId) {
       bodyweightSelections[sessionExerciseId] = currentBodyweight;
       updateBodyweightDisplay();
     }
+
+    recommendedWeights[sessionExerciseId] = rec.recommended_weight || 0;
 
     if (rec.recommended_weight > 0) {
       hint.style.display = 'block';
@@ -378,6 +444,17 @@ async function logSet() {
     buildSetBubbles(ex);
     updateLoggedSetsList(ex);
 
+    // Smart rating pre-select: below rep target or below recommended weight
+    // → "zu schwer"; above rep max → "zu leicht"; otherwise "ok".
+    const recWeight = recommendedWeights[ex.id] || 0;
+    if (currentReps < ex.reps_min || (recWeight > 0 && currentWeight < recWeight)) {
+      suggestedRating = 1;
+    } else if (currentReps > ex.reps_max) {
+      suggestedRating = 3;
+    } else {
+      suggestedRating = 2;
+    }
+
     const totalCompleted = logged.length + skipped.size;
     const isLastSet = totalCompleted >= ex.sets;
 
@@ -434,12 +511,13 @@ function startRestTimer(afterLastSet) {
   restPaused = false;
   restMinimized = false;
 
-  // Pre-select rating 2 (ok) as default
+  // Pre-select rating based on how the set actually went (Fix: was always 2)
   const noteEl = document.getElementById('set-note');
   if (noteEl) noteEl.value = '';
-  selectRating(2);
+  selectRating(suggestedRating);
 
-  // Show next exercise info if last set
+  // Show next exercise info if last set — including its weight, so the
+  // user can set up the next station during the rest period.
   const nextInfo = document.getElementById('next-exercise-info');
   const nextNameEl = document.getElementById('next-exercise-name');
 
@@ -447,6 +525,11 @@ function startRestTimer(afterLastSet) {
     const next = exercises[currentExerciseIndex + 1];
     nextInfo.style.display = 'block';
     nextNameEl.textContent = next.name;
+    API.get(`/api/recommendations/${next.id}`).then(rec => {
+      if (rec.recommended_weight > 0) {
+        nextNameEl.textContent = `${next.name} — ${formatWeight(rec.recommended_weight)}`;
+      }
+    }).catch(() => {});
   } else {
     nextInfo.style.display = 'none';
   }

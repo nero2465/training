@@ -180,9 +180,20 @@ async function toggleSession(sessionId, planName, sessionLabel) {
           const reps = ex.reps_min === ex.reps_max ? ex.reps_min : `${ex.reps_min}–${ex.reps_max}`;
           return `<div class="session-exercise-row">
             <span class="session-exercise-name">${escapeHtml(ex.name)}</span>
-            <span class="session-exercise-meta">${ex.sets}×${reps}</span>
+            <span class="session-exercise-meta">${ex.sets}×${reps}<span id="dash-weight-${ex.id}"></span></span>
           </div>`;
         }).join('');
+
+        // Fill in recommended weights async so you know what to load on the
+        // bar before even starting the workout.
+        exercises.forEach(ex => {
+          API.get(`/api/recommendations/${ex.id}`).then(rec => {
+            const el = document.getElementById(`dash-weight-${ex.id}`);
+            if (el && rec.recommended_weight > 0) {
+              el.innerHTML = ` · <strong style="color:var(--accent);">${formatWeight(rec.recommended_weight)}</strong>`;
+            }
+          }).catch(() => {});
+        });
       }
     } catch (e) {
       listEl.innerHTML = `<p class="text-danger" style="font-size:0.85rem;">Fehler: ${e.message}</p>`;
