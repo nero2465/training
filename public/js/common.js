@@ -2,7 +2,7 @@
    Common Utilities - Shared across all pages
    ============================================================ */
 
-const APP_VERSION = '2.4';
+const APP_VERSION = '2.5';
 
 // API helper
 const API = {
@@ -106,6 +106,11 @@ function formatWeight(kg) {
 let audioCtx = null;
 
 function getAudioContext() {
+  // iOS Safari closes the AudioContext after a phone call or app switch —
+  // a closed context can never be resumed, so recreate it.
+  if (audioCtx && audioCtx.state === 'closed') {
+    audioCtx = null;
+  }
   if (!audioCtx) {
     try {
       audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -116,13 +121,31 @@ function getAudioContext() {
   return audioCtx;
 }
 
+// Revive audio when the page becomes visible/active again. iOS puts the
+// context into 'interrupted' (non-standard) or 'suspended' after calls or
+// app switches; without this the timer keeps running but stays silent.
+function reviveAudioContext() {
+  if (!audioCtx) return;
+  if (audioCtx.state === 'closed') {
+    audioCtx = null; // recreated lazily on next getAudioContext()
+  } else if (audioCtx.state !== 'running') {
+    audioCtx.resume().catch(() => {});
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) reviveAudioContext();
+});
+window.addEventListener('pageshow', reviveAudioContext);
+window.addEventListener('focus', reviveAudioContext);
+
 function playBeep(frequency = 880, duration = 0.3, volume = 0.5) {
   const ctx = getAudioContext();
   if (!ctx) return;
 
   try {
-    // Resume context if suspended (browser autoplay policy)
-    if (ctx.state === 'suspended') {
+    // Resume context if suspended/interrupted (autoplay policy, iOS calls)
+    if (ctx.state !== 'running') {
       ctx.resume();
     }
 

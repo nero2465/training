@@ -35,6 +35,8 @@ let currentRating = null;      // 1/2/3 selected in rest overlay
 let lastSetId = null;          // ID of last saved set, for updating rating/note
 let restMinimized = false;
 let skippedSets = {};          // { sessionExerciseId: Set of set numbers skipped }
+let recommendedWeights = {};   // { sessionExerciseId: recommended weight } for smart rating pre-select
+let suggestedRating = 2;       // computed from last logged set vs targets
 
 async function init() {
   // Ensure audio ctx available
@@ -204,6 +206,12 @@ async function showExercise(index) {
   currentBodyweight = bodyweightSelections[ex.id] === true;
   updateBodyweightDisplay();
 
+  // Never carry the previous exercise's weight over. Resume from this
+  // exercise's own last logged set if present, otherwise start at 0 and
+  // let the recommendation (if any) set it.
+  currentWeight = logged.length > 0 ? (logged[logged.length - 1].weight || 0) : 0;
+  updateWeightDisplay();
+
   // Load recommendation
   await loadRecommendation(ex.id);
 
@@ -294,6 +302,8 @@ async function loadRecommendation(sessionExerciseId) {
       bodyweightSelections[sessionExerciseId] = currentBodyweight;
       updateBodyweightDisplay();
     }
+
+    recommendedWeights[sessionExerciseId] = rec.recommended_weight || 0;
 
     if (rec.recommended_weight > 0) {
       hint.style.display = 'block';
@@ -434,6 +444,17 @@ async function logSet() {
     buildSetBubbles(ex);
     updateLoggedSetsList(ex);
 
+    // Smart rating pre-select: below rep target or below recommended weight
+    // → "zu schwer"; above rep max → "zu leicht"; otherwise "ok".
+    const recWeight = recommendedWeights[ex.id] || 0;
+    if (currentReps < ex.reps_min || (recWeight > 0 && currentWeight < recWeight)) {
+      suggestedRating = 1;
+    } else if (currentReps > ex.reps_max) {
+      suggestedRating = 3;
+    } else {
+      suggestedRating = 2;
+    }
+
     const totalCompleted = logged.length + skipped.size;
     const isLastSet = totalCompleted >= ex.sets;
 
@@ -490,12 +511,13 @@ function startRestTimer(afterLastSet) {
   restPaused = false;
   restMinimized = false;
 
-  // Pre-select rating 2 (ok) as default
+  // Pre-select rating based on how the set actually went (Fix: was always 2)
   const noteEl = document.getElementById('set-note');
   if (noteEl) noteEl.value = '';
-  selectRating(2);
+  selectRating(suggestedRating);
 
-  // Show next exercise info if last set
+  // Show next exercise info if last set — including its weight, so the
+  // user can set up the next station during the rest period.
   const nextInfo = document.getElementById('next-exercise-info');
   const nextNameEl = document.getElementById('next-exercise-name');
 
@@ -503,6 +525,11 @@ function startRestTimer(afterLastSet) {
     const next = exercises[currentExerciseIndex + 1];
     nextInfo.style.display = 'block';
     nextNameEl.textContent = next.name;
+    API.get(`/api/recommendations/${next.id}`).then(rec => {
+      if (rec.recommended_weight > 0) {
+        nextNameEl.textContent = `${next.name} — ${formatWeight(rec.recommended_weight)}`;
+      }
+    }).catch(() => {});
   } else {
     nextInfo.style.display = 'none';
   }
