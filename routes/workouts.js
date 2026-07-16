@@ -26,9 +26,14 @@ router.post('/workouts/start', requireAuth, (req, res) => {
 
   if (!session) return res.status(404).json({ error: 'Session not found' });
 
+  // Tag workouts logged during an active deload week so they never feed
+  // the progression reference.
+  const { resolveDeloadState } = require('./deload');
+  const deload = resolveDeloadState(db, req.session.userId);
+
   const result = db.prepare(
-    'INSERT INTO workouts (user_id, session_id) VALUES (?, ?)'
-  ).run(req.session.userId, session_id);
+    'INSERT INTO workouts (user_id, session_id, is_deload) VALUES (?, ?, ?)'
+  ).run(req.session.userId, session_id, deload.active ? 1 : 0);
 
   const workout = db.prepare('SELECT * FROM workouts WHERE id = ?').get(result.lastInsertRowid);
   res.status(201).json(workout);
@@ -205,9 +210,62 @@ router.get('/progress/:exercise_id', requireAuth, (req, res) => {
   res.json(progress);
 });
 
+// Round to the nearest 2.5 kg (plate-loadable)
+function roundPlate(w) {
+  return Math.max(0, Math.round(w / 2.5) * 2.5);
+}
+
+// Build the per-set plan for a scheme from the top working weight.
+// Every scheme is a pure function (scheme, topWeight, sets, repsMin, repsMax) → [{set, weight, reps}]
+function buildSetPlan(scheme, topWeight, sets, repsMin, repsMax) {
+  const plan = [];
+  switch (scheme) {
+    case 'pyramid_asc': {
+      // Weight ramps 65% → 100%, reps descend repsMax → repsMin
+      for (let i = 0; i < sets; i++) {
+        const f = sets === 1 ? 1 : 0.65 + (i / (sets - 1)) * 0.35;
+        const reps = sets === 1 ? repsMin
+          : Math.round(repsMax - (i / (sets - 1)) * (repsMax - repsMin));
+        plan.push({ set: i + 1, weight: roundPlate(topWeight * f), reps });
+      }
+      break;
+    }
+    case 'pyramid_desc': {
+      // Reverse Pyramid: heaviest first (fresh), then −10% per set, +2 reps
+      for (let i = 0; i < sets; i++) {
+        plan.push({
+          set: i + 1,
+          weight: roundPlate(topWeight * Math.pow(0.9, i)),
+          reps: repsMin + i * 2
+        });
+      }
+      break;
+    }
+    case 'topset_backoff': {
+      // 1 heavy top set, remaining sets at 85% with more reps
+      for (let i = 0; i < sets; i++) {
+        plan.push({
+          set: i + 1,
+          weight: i === 0 ? roundPlate(topWeight) : roundPlate(topWeight * 0.85),
+          reps: i === 0 ? repsMin : repsMax
+        });
+      }
+      break;
+    }
+    default: {
+      // straight / double_progression: constant weight across all sets
+      for (let i = 0; i < sets; i++) {
+        plan.push({ set: i + 1, weight: roundPlate(topWeight), reps: repsMax });
+      }
+    }
+  }
+  return plan;
+}
+
 // GET /api/recommendations/:session_exercise_id
 router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
   const db = getDb();
+  const { resolveDeloadState } = require('./deload');
 
   // Verify user owns this session exercise
   const se = db.prepare(`
@@ -219,9 +277,12 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
 
   if (!se) return res.status(404).json({ error: 'Session exercise not found' });
 
-  // Most recent completed workout for this session_exercise slot where the
-  // exercise matches the current exercise (guards against stale data from a
-  // swapped exercise — old sets for exercise D must not influence exercise K).
+  const scheme = se.scheme || 'straight';
+  const deload = resolveDeloadState(db, req.session.userId);
+
+  // Most recent completed REGULAR workout for this slot (deload workouts are
+  // never used as a progression reference), matching the current exercise
+  // (guards against stale data from a swapped exercise).
   const lastWorkout = db.prepare(`
     SELECT w.id
     FROM workouts w
@@ -229,13 +290,14 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
     WHERE ws.session_exercise_id = ?
       AND w.user_id = ?
       AND w.ended_at IS NOT NULL
+      AND (w.is_deload IS NULL OR w.is_deload = 0)
       AND COALESCE(ws.exercise_id_snapshot, ?) = ?
     ORDER BY w.started_at DESC
     LIMIT 1
   `).get(req.params.session_exercise_id, req.session.userId, se.exercise_id, se.exercise_id);
 
   if (!lastWorkout) {
-    return res.json({ recommended_weight: 0, last_sets: [] });
+    return res.json({ recommended_weight: 0, last_sets: [], scheme, deload: deload.active });
   }
 
   const lastSets = db.prepare(`
@@ -246,7 +308,7 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
   `).all(lastWorkout.id, req.params.session_exercise_id);
 
   if (lastSets.length === 0) {
-    return res.json({ recommended_weight: 0, last_sets: [] });
+    return res.json({ recommended_weight: 0, last_sets: [], scheme, deload: deload.active });
   }
 
   const maxWeight = Math.max(...lastSets.map(s => s.weight));
@@ -258,36 +320,81 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
   const exercise = db.prepare('SELECT increment_kg FROM exercises WHERE id = ?').get(se.exercise_id);
   const increment = (exercise && exercise.increment_kg) || 2.5;
 
-  let recommended = maxWeight;
+  // ── Deload week: fixed % of last working weight, half the sets,
+  //    no progression logic applied ──
+  if (deload.active) {
+    const pct = (settings && settings.deload_percent) || 55;
+    const deloadWeight = roundPlate(maxWeight * pct / 100);
+    const deloadSets = Math.ceil(se.sets / 2);
+    return res.json({
+      recommended_weight: deloadWeight,
+      last_weight: maxWeight,
+      increment,
+      reason: 'deload',
+      scheme,
+      deload: true,
+      sets_override: deloadSets,
+      set_plan: buildSetPlan('straight', deloadWeight, deloadSets, se.reps_min, se.reps_max),
+      auto_progress: autoProgress,
+      last_bodyweight: lastSets.some(set => Number(set.is_bodyweight) === 1),
+      last_sets: lastSets
+    });
+  }
+
+  // ── Determine top working weight (progression logic) ──
+  let topWeight = maxWeight;
   let reason = 'last';
 
-  if (autoProgress) {
-    const ratings = lastSets.map(s => s.rating).filter(r => r !== null && r !== undefined);
-    const anyTooHard = ratings.includes(1);
-    const allTooHard = ratings.length > 0 && ratings.every(r => r === 1);
-    const allSetsDone = lastSets.length >= se.sets;
-    const allRepsMax = lastSets.every(s => s.reps >= se.reps_max);
+  const ratings = lastSets.map(s => s.rating).filter(r => r !== null && r !== undefined);
+  const anyTooHard = ratings.includes(1);
+  const allTooHard = ratings.length > 0 && ratings.every(r => r === 1);
+  const allSetsDone = lastSets.length >= se.sets;
+  const allRepsMax = lastSets.every(s => s.reps >= se.reps_max);
 
-    if (allTooHard) {
-      // Every rated set was too hard: back off one increment
-      recommended = Math.max(0, maxWeight - increment);
-      reason = 'decrease';
-    } else if (anyTooHard) {
-      reason = 'hold_hard';
-    } else if (allSetsDone && allRepsMax) {
-      recommended = maxWeight + increment;
-      reason = 'increase';
+  if (deload.postDeload) {
+    // First week after a deload: re-enter at ~90% of pre-deload weight
+    topWeight = roundPlate(maxWeight * 0.9);
+    reason = 'post_deload';
+  } else if (autoProgress) {
+    if (scheme === 'double_progression') {
+      // First grow reps to reps_max on ALL sets, only then add weight
+      if (allTooHard) {
+        topWeight = Math.max(0, maxWeight - increment);
+        reason = 'decrease';
+      } else if (allSetsDone && allRepsMax && !anyTooHard) {
+        topWeight = maxWeight + increment;
+        reason = 'dp_increase';
+      } else {
+        reason = 'dp_reps'; // hold weight, push reps
+      }
     } else {
-      reason = 'hold';
+      if (allTooHard) {
+        topWeight = Math.max(0, maxWeight - increment);
+        reason = 'decrease';
+      } else if (anyTooHard) {
+        reason = 'hold_hard';
+      } else if (allSetsDone && allRepsMax) {
+        topWeight = maxWeight + increment;
+        reason = 'increase';
+      } else {
+        reason = 'hold';
+      }
     }
   }
 
+  const setPlan = buildSetPlan(scheme, topWeight, se.sets, se.reps_min, se.reps_max);
+
   res.json({
-    recommended_weight: recommended,
+    recommended_weight: setPlan[0].weight,
+    top_weight: topWeight,
     last_weight: maxWeight,
-    avg_weight: Math.round(avgWeight * 2) / 2, // round to nearest 0.5
+    avg_weight: Math.round(avgWeight * 2) / 2,
     increment,
     reason,
+    scheme,
+    deload: false,
+    post_deload: !!deload.postDeload,
+    set_plan: setPlan,
     auto_progress: autoProgress,
     last_bodyweight: lastSets.some(set => Number(set.is_bodyweight) === 1),
     last_sets: lastSets
@@ -313,3 +420,4 @@ router.put('/workout-sets/:id', requireAuth, (req, res) => {
 });
 
 module.exports = router;
+module.exports.buildSetPlan = buildSetPlan; // exported for tests

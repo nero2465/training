@@ -105,6 +105,15 @@ function runMigrations() {
     'ALTER TABLE exercises ADD COLUMN emom_focus TEXT',
     'ALTER TABLE exercises ADD COLUMN emom_base_reps INTEGER',
     'ALTER TABLE exercises ADD COLUMN emom_reps_unit TEXT',
+    // Paket 1: Deload + Satz-Schemata
+    'ALTER TABLE user_settings ADD COLUMN deload_enabled INTEGER DEFAULT 1',
+    'ALTER TABLE user_settings ADD COLUMN deload_interval_weeks INTEGER DEFAULT 6',
+    'ALTER TABLE user_settings ADD COLUMN deload_percent INTEGER DEFAULT 55',
+    'ALTER TABLE user_settings ADD COLUMN cycle_start_date TEXT',
+    'ALTER TABLE user_settings ADD COLUMN deload_active_until TEXT',
+    'ALTER TABLE user_settings ADD COLUMN last_deload_end TEXT',
+    'ALTER TABLE workouts ADD COLUMN is_deload INTEGER DEFAULT 0',
+    'ALTER TABLE session_exercises ADD COLUMN scheme TEXT',
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch(e) { /* column already exists */ }

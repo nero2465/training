@@ -222,11 +222,13 @@ router.put('/session-exercises/:id', requireAuth, (req, res) => {
 
   if (!se) return res.status(404).json({ error: 'Session exercise not found' });
 
-  const { exercise_id, sets, reps_min, reps_max, order_index } = req.body;
+  const { exercise_id, sets, reps_min, reps_max, order_index, scheme } = req.body;
+
+  const validSchemes = ['straight', 'double_progression', 'pyramid_asc', 'pyramid_desc', 'topset_backoff'];
 
   db.prepare(`
     UPDATE session_exercises
-    SET exercise_id = ?, sets = ?, reps_min = ?, reps_max = ?, order_index = ?
+    SET exercise_id = ?, sets = ?, reps_min = ?, reps_max = ?, order_index = ?, scheme = ?
     WHERE id = ?
   `).run(
     exercise_id !== undefined ? exercise_id : se.exercise_id,
@@ -234,6 +236,7 @@ router.put('/session-exercises/:id', requireAuth, (req, res) => {
     reps_min !== undefined ? reps_min : se.reps_min,
     reps_max !== undefined ? reps_max : se.reps_max,
     order_index !== undefined ? order_index : se.order_index,
+    scheme !== undefined ? (validSchemes.includes(scheme) ? scheme : null) : se.scheme,
     se.id
   );
 

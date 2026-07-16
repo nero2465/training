@@ -37,6 +37,8 @@ let restMinimized = false;
 let skippedSets = {};          // { sessionExerciseId: Set of set numbers skipped }
 let recommendedWeights = {};   // { sessionExerciseId: recommended weight } for smart rating pre-select
 let suggestedRating = 2;       // computed from last logged set vs targets
+let setPlans = {};             // { sessionExerciseId: [{set, weight, reps}] } from scheme/deload
+let deloadActive = false;      // true while the whole workout runs in deload mode
 
 async function init() {
   // Ensure audio ctx available
@@ -304,12 +306,28 @@ async function loadRecommendation(sessionExerciseId) {
     }
 
     recommendedWeights[sessionExerciseId] = rec.recommended_weight || 0;
+    setPlans[sessionExerciseId] = rec.set_plan || null;
+    deloadActive = rec.deload === true;
+
+    const ex = exercises[currentExerciseIndex];
+
+    // Deload: halve the sets for this session (visual + completion logic)
+    if (rec.deload && rec.sets_override && ex && ex.id === sessionExerciseId && ex.sets !== rec.sets_override) {
+      ex.sets = rec.sets_override;
+      buildSetBubbles(ex);
+      const meta = document.getElementById('exercise-meta');
+      if (meta && !meta.textContent.includes('Deload')) {
+        meta.textContent = `🔄 Deload: ${ex.sets} × ${ex.reps_min}–${ex.reps_max} Wdh.`;
+      }
+    }
 
     if (rec.recommended_weight > 0) {
       hint.style.display = 'block';
-      hint.innerHTML = `Empfehlung: <strong>${rec.recommended_weight} kg</strong> ${recommendationReasonText(rec)}`;
-      // Pre-set weight to recommended
-      if ((loggedSets[sessionExerciseId] || []).length === 0) {
+      const planLine = setPlanSummary(rec);
+      hint.innerHTML = `Empfehlung: <strong>${rec.recommended_weight} kg</strong> ${recommendationReasonText(rec)}${planLine}`;
+      // Pre-set weight (and reps for schemes) for the next open set
+      applyPlanForNextSet(sessionExerciseId);
+      if (!setPlans[sessionExerciseId] && (loggedSets[sessionExerciseId] || []).length === 0) {
         currentWeight = rec.recommended_weight;
         updateWeightDisplay();
       }
@@ -324,17 +342,55 @@ async function loadRecommendation(sessionExerciseId) {
   }
 }
 
+// Weight/reps ramp preview under the recommendation, e.g. "40×12 → 50×10 → 60×8"
+function setPlanSummary(rec) {
+  const plan = rec.set_plan;
+  if (!plan || plan.length === 0) return '';
+  if (rec.deload) {
+    return `<br><span style="color:var(--accent);">🔄 Deload-Woche: ${plan.length} Sätze @ ${formatWeight(plan[0].weight)}</span>`;
+  }
+  if (!rec.scheme || rec.scheme === 'straight') return '';
+  if (rec.scheme === 'double_progression') {
+    return `<br><span style="color:var(--text-muted); font-size:0.85em;">Double Progression: erst alle Sätze auf ${exercises[currentExerciseIndex]?.reps_max ?? '–'} Wdh. bringen, dann Gewicht erhöhen</span>`;
+  }
+  const chain = plan.map(p => `${p.weight % 1 === 0 ? p.weight : p.weight.toFixed(1)}×${p.reps}`).join(' → ');
+  return `<br><span style="color:var(--text-muted); font-size:0.85em;">Plan: ${chain}</span>`;
+}
+
+// Pre-fill weight + reps from the scheme plan for the next open set.
+function applyPlanForNextSet(sessionExerciseId) {
+  const plan = setPlans[sessionExerciseId];
+  if (!plan) return;
+  const ex = exercises[currentExerciseIndex];
+  if (!ex || ex.id !== sessionExerciseId) return;
+  const done = (loggedSets[ex.id]?.length || 0) + (skippedSets[ex.id]?.size || 0);
+  const entry = plan[Math.min(done, plan.length - 1)];
+  if (!entry) return;
+  currentWeight = entry.weight;
+  currentReps = entry.reps;
+  updateWeightDisplay();
+  updateRepsDisplay();
+}
+
 function recommendationReasonText(rec) {
   const inc = rec.increment % 1 === 0 ? rec.increment : rec.increment.toFixed(1);
   switch (rec.reason) {
     case 'increase':
       return `<span style="color:var(--success, #4ade80);">(+${inc} kg — alle Wdh. geschafft 💪)</span>`;
+    case 'dp_increase':
+      return `<span style="color:var(--success, #4ade80);">(+${inc} kg — Wdh.-Maximum in allen Sätzen erreicht 💪)</span>`;
+    case 'dp_reps':
+      return `<span style="color:var(--text-muted);">(Gewicht halten — Wiederholungen steigern)</span>`;
     case 'decrease':
       return `<span style="color:#ef4444;">(−${inc} kg — letztes Mal zu schwer)</span>`;
     case 'hold_hard':
       return `<span style="color:var(--text-muted);">(halten — letztes Mal teils zu schwer)</span>`;
     case 'hold':
       return `<span style="color:var(--text-muted);">(halten — Wdh.-Ziel noch nicht erreicht)</span>`;
+    case 'deload':
+      return `<span style="color:var(--accent);">(Deload — Erholungswoche)</span>`;
+    case 'post_deload':
+      return `<span style="color:var(--accent);">(90 % — Wiedereinstieg nach Deload 🌱)</span>`;
     default:
       return '(letztes Training)';
   }
@@ -467,6 +523,7 @@ async function logSet() {
       // More sets remain
       restAfterLastSet = false;
       currentSetNumber = logged.length + skipped.size + 1;
+      applyPlanForNextSet(ex.id); // scheme: pre-fill weight/reps for next set
       startRestTimer(false);
     }
 
