@@ -59,6 +59,7 @@ async function onExerciseChange() {
 
     // Show stats
     renderStats(progressData);
+    loadTestedOrm(exerciseId);
     document.getElementById('stats-area').classList.remove('hidden');
 
     // Show chart
@@ -74,6 +75,25 @@ async function onExerciseChange() {
 // Server liefert est_1rm = MAX über alle Sätze von weight × (1 + reps/30) (Epley)
 function workout1RM(d) {
   return Math.round(d.est_1rm || d.max_weight || 0);
+}
+
+// Tested 1RM (from the guided 1RM mode) shown under the estimated value
+async function loadTestedOrm(exerciseId) {
+  const el = document.getElementById('stat-1rm');
+  if (!el) return;
+  const box = el.closest('.stat-box');
+  const old = box?.querySelector('.tested-orm-line');
+  if (old) old.remove();
+  try {
+    const tests = await API.get(`/api/orm-tests/${exerciseId}`);
+    if (tests.length > 0 && box) {
+      const line = document.createElement('div');
+      line.className = 'tested-orm-line';
+      line.style.cssText = 'font-size:0.68rem; color:var(--success, #4ade80); margin-top:2px;';
+      line.textContent = `✔ getestet: ${tests[0].weight} kg`;
+      box.appendChild(line);
+    }
+  } catch (e) { /* keine Tests */ }
 }
 
 function renderStats(data) {

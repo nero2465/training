@@ -231,6 +231,14 @@
         <!-- Recommendation hint -->
         <div class="recommendation-hint" id="recommendation-hint" style="display:none;"></div>
 
+        <!-- Warmup ramp (computed, not logged) -->
+        <div id="warmup-area" style="display:none; margin-bottom:10px;">
+          <button class="btn btn-outline btn-sm" id="warmup-toggle-btn" onclick="toggleWarmup()" style="width:100%;">
+            🔥 Aufwärmsätze anzeigen
+          </button>
+          <div id="warmup-list" style="display:none; margin-top:8px; padding:10px 12px; background:var(--bg-elevated); border-radius:var(--radius-sm); font-size:0.85rem; line-height:1.9;"></div>
+        </div>
+
         <!-- Weight + Reps controls -->
         <div class="weight-reps-row">
           <div class="control-group">
@@ -254,6 +262,9 @@
             </div>
           </div>
         </div>
+
+        <!-- Plate loading hint -->
+        <div id="plate-hint" style="display:none; text-align:center; font-size:0.8rem; color:var(--text-muted); margin-top:6px;"></div>
 
         <label class="bodyweight-toggle">
           <input type="checkbox" id="bodyweight-toggle" onchange="setBodyweightFromInput()">

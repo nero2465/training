@@ -83,6 +83,16 @@ function createTables() {
       auto_progress INTEGER DEFAULT 1,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS orm_tests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      exercise_id INTEGER NOT NULL,
+      weight REAL NOT NULL,
+      tested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (exercise_id) REFERENCES exercises(id)
+    );
   `);
 }
 
@@ -114,6 +124,8 @@ function runMigrations() {
     'ALTER TABLE user_settings ADD COLUMN last_deload_end TEXT',
     'ALTER TABLE workouts ADD COLUMN is_deload INTEGER DEFAULT 0',
     'ALTER TABLE session_exercises ADD COLUMN scheme TEXT',
+    // Paket 2: Hantelscheiben-Inventar (JSON)
+    'ALTER TABLE user_settings ADD COLUMN plate_inventory TEXT',
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch(e) { /* column already exists */ }

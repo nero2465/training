@@ -198,6 +198,36 @@
       </div>
 
       <div class="card" style="margin-top:12px;">
+        <div class="card-title">Hantelscheiben</div>
+
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-title">Scheiben-Rechner</div>
+            <div class="setting-desc">
+              Hinterlege deinen Scheibenbestand (Anzahl <strong>pro Seite</strong>).
+              Im Training zeigt die App dann, welche Scheiben du auflegen musst.
+            </div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="plates-toggle" onchange="togglePlates(this.checked)">
+            <span class="switch-slider"></span>
+          </label>
+        </div>
+
+        <div id="plates-editor" style="display:none;">
+          <div class="setting-row" style="padding-top:4px;">
+            <div class="setting-info"><div class="setting-title" style="font-size:0.88rem;">Stange</div></div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <input type="number" class="form-control" id="plate-bar" value="20" min="5" max="30" step="2.5"
+                style="width:70px; text-align:center;" onchange="savePlates()"> kg
+            </div>
+          </div>
+          <div id="plate-rows"></div>
+          <div class="info-box" id="plate-preview" style="margin-top:8px;"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:12px;">
         <div class="card-title">App</div>
         <div class="setting-row" style="padding-bottom:0;">
           <div class="setting-info">

@@ -2,7 +2,7 @@
    Common Utilities - Shared across all pages
    ============================================================ */
 
-const APP_VERSION = '2.6';
+const APP_VERSION = '2.7';
 
 // API helper
 const API = {
@@ -231,6 +231,64 @@ function showToast(message, type = 'info', duration = 3000) {
 // Confirm dialog
 function showConfirm(message) {
   return window.confirm(message);
+}
+
+/* ============================================================
+   Plate Calculator — shared by training, settings and 1RM mode
+   ============================================================ */
+
+// Default: typical home-gym set. plates = count PER SIDE.
+const DEFAULT_PLATE_INVENTORY = {
+  bar: 20,
+  plates: { '25': 0, '20': 2, '15': 0, '10': 2, '5': 2, '2.5': 2, '1.25': 2 }
+};
+
+function parsePlateInventory(raw) {
+  if (!raw) return null;
+  try {
+    const inv = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (typeof inv.bar !== 'number' || typeof inv.plates !== 'object') return null;
+    return inv;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Greedy loadout: which plates per side for a target weight.
+// Returns { achievable, actual, perSide: [plate,...], diff } — `actual` is the
+// closest weight ≤ target that the inventory can build (or bar weight).
+function computePlateLoadout(target, inv) {
+  if (!inv || target < inv.bar) {
+    return { achievable: false, actual: inv ? inv.bar : 0, perSide: [], diff: inv ? target - inv.bar : 0 };
+  }
+  let remainingPerSide = (target - inv.bar) / 2;
+  const sizes = Object.keys(inv.plates).map(Number).filter(s => inv.plates[s] > 0).sort((a, b) => b - a);
+  const perSide = [];
+  for (const size of sizes) {
+    let count = inv.plates[String(size)];
+    while (count > 0 && remainingPerSide >= size - 1e-9) {
+      perSide.push(size);
+      remainingPerSide -= size;
+      count--;
+    }
+  }
+  const actual = inv.bar + (perSide.reduce((a, b) => a + b, 0) * 2);
+  return {
+    achievable: Math.abs(actual - target) < 1e-9,
+    actual,
+    perSide,
+    diff: target - actual
+  };
+}
+
+function formatPlateLoadout(loadout, inv) {
+  if (!loadout || !inv) return '';
+  if (loadout.perSide.length === 0) return `nur Stange (${inv.bar} kg)`;
+  const counts = {};
+  loadout.perSide.forEach(p => { counts[p] = (counts[p] || 0) + 1; });
+  return Object.keys(counts).map(Number).sort((a, b) => b - a)
+    .map(size => counts[size] > 1 ? `${counts[size]}×${size}` : `${size}`)
+    .join(' + ');
 }
 
 // Store current workout in sessionStorage

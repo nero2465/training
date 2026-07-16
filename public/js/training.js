@@ -39,6 +39,7 @@ let recommendedWeights = {};   // { sessionExerciseId: recommended weight } for 
 let suggestedRating = 2;       // computed from last logged set vs targets
 let setPlans = {};             // { sessionExerciseId: [{set, weight, reps}] } from scheme/deload
 let deloadActive = false;      // true while the whole workout runs in deload mode
+let plateInventory = null;     // user's plate inventory from settings (null = feature off)
 
 async function init() {
   // Ensure audio ctx available
@@ -62,6 +63,12 @@ async function init() {
   if (!user) return;
 
   document.getElementById('training-title').textContent = `Training ${sessionLabel}`;
+
+  // Plate inventory for the loading hint (non-blocking, feature off if unset)
+  API.get('/api/settings').then(s => {
+    plateInventory = parsePlateInventory(s.plate_inventory);
+    updatePlateHint();
+  }).catch(() => {});
 
   // Load exercises
   await loadExercises();
@@ -337,6 +344,8 @@ async function loadRecommendation(sessionExerciseId) {
         updateWeightDisplay();
       }
     }
+
+    if (ex && ex.id === sessionExerciseId) updateWarmupArea(ex);
   } catch (e) {
     hint.style.display = 'none';
   }
@@ -417,6 +426,83 @@ function adjustReps(delta) {
 function updateWeightDisplay() {
   const el = document.getElementById('weight-display');
   el.value = currentWeight % 1 === 0 ? currentWeight : currentWeight.toFixed(1);
+  updatePlateHint();
+}
+
+// "Pro Seite: 20 + 10 + 2,5" under the weight input (needs inventory in settings)
+function updatePlateHint() {
+  const el = document.getElementById('plate-hint');
+  if (!el) return;
+  if (!plateInventory || currentBodyweight || currentWeight < plateInventory.bar) {
+    el.style.display = 'none';
+    return;
+  }
+  const loadout = computePlateLoadout(currentWeight, plateInventory);
+  let text = `🏋️ Pro Seite: <strong style="color:var(--text-primary);">${formatPlateLoadout(loadout, plateInventory)}</strong>`;
+  if (!loadout.achievable) {
+    text += ` <span style="color:#fbbf24;">(${currentWeight} kg nicht exakt ladbar → ${loadout.actual} kg)</span>`;
+  }
+  el.innerHTML = text;
+  el.style.display = 'block';
+}
+
+/* ── Warmup ramp (display only, never logged) ─────────────── */
+
+function buildWarmupRamp(workWeight) {
+  const bar = plateInventory ? plateInventory.bar : 20;
+  if (!workWeight || workWeight < bar * 1.5) return []; // too light, no ramp needed
+  const steps = [
+    { pct: 0,    reps: 10, label: 'Leere Stange' },
+    { pct: 0.4,  reps: 8 },
+    { pct: 0.6,  reps: 5 },
+    { pct: 0.8,  reps: 3 }
+  ];
+  const ramp = [];
+  let prev = 0;
+  for (const s of steps) {
+    const w = s.pct === 0 ? bar : Math.round(workWeight * s.pct / 2.5) * 2.5;
+    if (w < bar || w <= prev || w >= workWeight) continue;
+    ramp.push({ weight: w, reps: s.reps, label: s.label });
+    prev = w;
+  }
+  return ramp;
+}
+
+function updateWarmupArea(ex) {
+  const area = document.getElementById('warmup-area');
+  const list = document.getElementById('warmup-list');
+  const btn = document.getElementById('warmup-toggle-btn');
+  if (!area) return;
+
+  // Only before the first set of an exercise, and only when a ramp makes sense
+  const done = (loggedSets[ex.id]?.length || 0) + (skippedSets[ex.id]?.size || 0);
+  const workWeight = setPlans[ex.id]?.[0]?.weight ?? currentWeight;
+  const ramp = buildWarmupRamp(workWeight);
+
+  if (done > 0 || ramp.length === 0 || currentBodyweight) {
+    area.style.display = 'none';
+    return;
+  }
+
+  area.style.display = 'block';
+  list.style.display = 'none';
+  btn.textContent = '🔥 Aufwärmsätze anzeigen';
+  list.innerHTML = ramp.map(r => {
+    let plates = '';
+    if (plateInventory && r.weight >= plateInventory.bar) {
+      const lo = computePlateLoadout(r.weight, plateInventory);
+      plates = ` <span style="color:var(--text-muted); font-size:0.85em;">(${formatPlateLoadout(lo, plateInventory)})</span>`;
+    }
+    return `• ${r.label ? r.label + ' — ' : ''}<strong>${formatWeight(r.weight)}</strong> × ${r.reps}${plates}`;
+  }).join('<br>') + '<br><span style="color:var(--text-muted); font-size:0.85em;">Aufwärmsätze werden nicht geloggt und zählen nicht ins Volumen.</span>';
+}
+
+function toggleWarmup() {
+  const list = document.getElementById('warmup-list');
+  const btn = document.getElementById('warmup-toggle-btn');
+  const open = list.style.display !== 'none';
+  list.style.display = open ? 'none' : 'block';
+  btn.textContent = open ? '🔥 Aufwärmsätze anzeigen' : '🔥 Aufwärmsätze ausblenden';
 }
 
 function updateRepsDisplay() {
@@ -431,6 +517,7 @@ function setBodyweightFromInput() {
   if (ex) {
     bodyweightSelections[ex.id] = currentBodyweight;
   }
+  updatePlateHint();
 }
 
 function updateBodyweightDisplay() {
@@ -524,6 +611,7 @@ async function logSet() {
       restAfterLastSet = false;
       currentSetNumber = logged.length + skipped.size + 1;
       applyPlanForNextSet(ex.id); // scheme: pre-fill weight/reps for next set
+      updateWarmupArea(ex);       // hide warmup once the first set is logged
       startRestTimer(false);
     }
 
