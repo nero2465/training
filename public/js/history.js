@@ -3,6 +3,8 @@
    ============================================================ */
 
 let expandedWorkoutId = null;
+let calYear = new Date().getFullYear();
+let calMonth = new Date().getMonth(); // 0-based
 
 async function init() {
   document.getElementById('nav-placeholder').innerHTML = buildNav('history');
@@ -10,7 +12,88 @@ async function init() {
   const user = await requireAuth();
   if (!user) return;
 
+  loadCalendar();
   await loadHistory();
+}
+
+/* ── Volume calendar ──────────────────────────────────────── */
+
+function calNav(delta) {
+  calMonth += delta;
+  if (calMonth < 0) { calMonth = 11; calYear--; }
+  if (calMonth > 11) { calMonth = 0; calYear++; }
+  loadCalendar();
+}
+
+function volCompact(v) {
+  if (!v) return '';
+  return v >= 1000 ? (v / 1000).toFixed(1).replace('.', ',') + 't' : String(Math.round(v));
+}
+
+async function loadCalendar() {
+  const grid = document.getElementById('cal-grid');
+  const title = document.getElementById('cal-title');
+  const summary = document.getElementById('cal-summary');
+  if (!grid) return;
+
+  const first = new Date(calYear, calMonth, 1);
+  const last = new Date(calYear, calMonth + 1, 0);
+  const pad = n => String(n).padStart(2, '0');
+  const from = `${calYear}-${pad(calMonth + 1)}-01`;
+  const to = `${calYear}-${pad(calMonth + 1)}-${pad(last.getDate())}`;
+
+  title.textContent = first.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+
+  let days = [];
+  try {
+    days = await API.get(`/api/stats/calendar?from=${from}&to=${to}`);
+  } catch (e) { /* leave empty */ }
+  const byDate = {};
+  days.forEach(d => { byDate[d.date] = d; });
+
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const dows = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+  let html = dows.map(d => `<div class="cal-dow">${d}</div>`).join('');
+
+  const lead = (first.getDay() + 6) % 7; // Monday-first offset
+  for (let i = 0; i < lead; i++) html += '<div class="cal-day empty"></div>';
+
+  for (let d = 1; d <= last.getDate(); d++) {
+    const iso = `${calYear}-${pad(calMonth + 1)}-${pad(d)}`;
+    const info = byDate[iso];
+    const classes = ['cal-day'];
+    if (iso === todayIso) classes.push('today');
+    let inner = `<div class="cal-day-num">${d}</div>`;
+    let click = '';
+    if (info) {
+      classes.push('has-workout');
+      if (info.workouts.every(w => w.is_deload)) classes.push('deload-day');
+      inner += `<div class="cal-day-vol">${volCompact(info.volume)}</div>`;
+      click = ` onclick="openWorkoutFromCalendar(${info.workouts[0].id})"`;
+    }
+    html += `<div class="${classes.join(' ')}"${click}>${inner}</div>`;
+  }
+
+  grid.innerHTML = html;
+
+  const totalVol = days.reduce((s, d) => s + d.volume, 0);
+  const count = days.reduce((s, d) => s + d.workouts.length, 0);
+  summary.textContent = count > 0
+    ? `${count} Training${count === 1 ? '' : 's'} · Volumen gesamt: ${volCompact(totalVol)}${totalVol >= 1000 ? '' : ' kg'}`
+    : 'Keine Trainings in diesem Monat';
+}
+
+// Calendar → jump to the matching history card and open its detail
+async function openWorkoutFromCalendar(workoutId) {
+  const card = document.getElementById(`wcard-${workoutId}`);
+  if (!card) return;
+  const detail = document.getElementById(`wdetail-${workoutId}`);
+  if (detail && !detail.classList.contains('show')) {
+    await toggleDetail(workoutId);
+  }
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  card.style.outline = '2px solid var(--accent)';
+  setTimeout(() => { card.style.outline = ''; }, 1600);
 }
 
 async function loadHistory() {
@@ -162,11 +245,11 @@ function renderWorkoutDetail(workout) {
     const hasBodyweightSets = sets.some(s => s.is_bodyweight);
 
     const rows = sets.map(s => `
-      <tr>
+      <tr class="set-row-editable" id="setrow-${s.id}" onclick="startEditSet(${s.id}, ${s.weight}, ${s.reps}, ${workout.id})" title="Antippen zum Bearbeiten">
         <td>Satz ${s.set_number}</td>
-        <td>${formatSetMetric(s, 'weight')}</td>
-        <td>${formatSetMetric(s, 'reps')}</td>
-        <td>${(s.weight * s.reps).toFixed(0)} kg</td>
+        <td id="setcell-w-${s.id}">${formatSetMetric(s, 'weight')}</td>
+        <td id="setcell-r-${s.id}">${formatSetMetric(s, 'reps')}</td>
+        <td id="setcell-v-${s.id}">${(s.weight * s.reps).toFixed(0)} kg</td>
       </tr>
     `).join('');
 
@@ -199,6 +282,64 @@ function renderWorkoutDetail(workout) {
 function formatSetMetric(set, type) {
   const base = type === 'weight' ? `${set.weight} kg` : `${set.reps} Wdh.`;
   return `${base}${set.is_bodyweight ? ' <span class="bodyweight-badge">BW</span>' : ''}`;
+}
+
+/* ── Inline set editing (post-hoc corrections) ────────────── */
+
+let editingSetId = null;
+
+function startEditSet(setId, weight, reps, workoutId) {
+  if (editingSetId === setId) return;
+  // Only one edit at a time — reload cancels any other open edit
+  if (editingSetId !== null) { refreshDetail(workoutId); }
+  editingSetId = setId;
+
+  const row = document.getElementById(`setrow-${setId}`);
+  if (!row) return;
+  row.onclick = null;
+
+  document.getElementById(`setcell-w-${setId}`).innerHTML =
+    `<input type="number" class="set-edit-input" id="set-edit-w-${setId}" value="${weight}" min="0" step="2.5" onclick="event.stopPropagation()">`;
+  document.getElementById(`setcell-r-${setId}`).innerHTML =
+    `<input type="number" class="set-edit-input" id="set-edit-r-${setId}" value="${reps}" min="0" step="1" onclick="event.stopPropagation()" style="width:44px;">`;
+  document.getElementById(`setcell-v-${setId}`).innerHTML =
+    `<span style="display:inline-flex; gap:4px;">
+       <button class="btn btn-primary btn-sm" style="padding:2px 8px;" onclick="event.stopPropagation(); saveEditSet(${setId}, ${workoutId})">✓</button>
+       <button class="btn btn-secondary btn-sm" style="padding:2px 8px;" onclick="event.stopPropagation(); refreshDetail(${workoutId})">✕</button>
+     </span>`;
+  setTimeout(() => document.getElementById(`set-edit-w-${setId}`)?.focus(), 50);
+}
+
+async function saveEditSet(setId, workoutId) {
+  const weight = parseFloat(document.getElementById(`set-edit-w-${setId}`)?.value);
+  const reps = parseInt(document.getElementById(`set-edit-r-${setId}`)?.value);
+  if (isNaN(weight) || weight < 0 || isNaN(reps) || reps < 0) {
+    showToast('Ungültige Werte', 'error');
+    return;
+  }
+  try {
+    await API.put(`/api/workout-sets/${setId}`, { weight, reps });
+    showToast('Satz korrigiert', 'success');
+    await refreshDetail(workoutId);
+    loadCalendar(); // day volume may have changed
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
+}
+
+// Re-fetch and re-render one workout's detail block
+async function refreshDetail(workoutId) {
+  editingSetId = null;
+  const detailEl = document.getElementById(`wdetail-${workoutId}`);
+  if (!detailEl) return;
+  try {
+    const data = await API.get(`/api/workouts/${workoutId}`);
+    detailEl.innerHTML = renderWorkoutDetail(data);
+    detailEl.dataset.loaded = '1';
+    detailEl.classList.add('show');
+  } catch (e) {
+    detailEl.innerHTML = `<p class="text-danger" style="padding:12px;">Fehler: ${e.message}</p>`;
+  }
 }
 
 function escapeHtml(str) {

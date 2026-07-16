@@ -981,6 +981,20 @@ async function endTraining() {
       `${exercises.length} Übungen · ${totalSets} Sätze · ${formatDuration(sessionSeconds)}`;
     document.getElementById('training-done-overlay').classList.remove('hidden');
 
+    // Personal records this workout (async, appended when they arrive)
+    API.get(`/api/stats/prs/${workoutId}`).then(prs => {
+      if (!prs || prs.length === 0) return;
+      const el = document.getElementById('done-prs');
+      if (!el) return;
+      el.innerHTML = prs.map(p => {
+        const label = p.type === 'weight'
+          ? `${formatWeight(p.new_value)} (vorher ${formatWeight(p.old_value)})`
+          : `~${p.new_value} kg 1RM (vorher ~${p.old_value} kg)`;
+        return `<div style="margin-top:6px;">🏆 <strong>${escapeHtml(p.exercise)}</strong> — neuer Rekord: ${label}</div>`;
+      }).join('');
+      el.style.display = 'block';
+    }).catch(() => {});
+
   } catch (e) {
     showToast('Fehler beim Beenden: ' + e.message, 'error');
   }

@@ -411,9 +411,24 @@ router.put('/workout-sets/:id', requireAuth, (req, res) => {
   `).get(req.params.id, req.session.userId);
   if (!set) return res.status(404).json({ error: 'Set not found' });
 
-  const { rating, note } = req.body;
-  db.prepare('UPDATE workout_sets SET rating=?, note=? WHERE id=?')
-    .run(rating ?? set.rating, note ?? set.note, set.id);
+  const { rating, note, weight, reps } = req.body;
+
+  // Optional post-hoc corrections from the history view
+  let newWeight = set.weight;
+  let newReps = set.reps;
+  if (weight !== undefined) {
+    const w = parseFloat(weight);
+    if (isNaN(w) || w < 0) return res.status(400).json({ error: 'Ungültiges Gewicht' });
+    newWeight = w;
+  }
+  if (reps !== undefined) {
+    const r = parseInt(reps);
+    if (isNaN(r) || r < 0) return res.status(400).json({ error: 'Ungültige Wiederholungen' });
+    newReps = r;
+  }
+
+  db.prepare('UPDATE workout_sets SET rating=?, note=?, weight=?, reps=? WHERE id=?')
+    .run(rating ?? set.rating, note ?? set.note, newWeight, newReps, set.id);
 
   const updated = db.prepare('SELECT * FROM workout_sets WHERE id=?').get(set.id);
   res.json(updated);

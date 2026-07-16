@@ -13,7 +13,44 @@ async function init() {
   const user = await requireAuth();
   if (!user) return;
 
+  loadMuscleVolume();
   await loadExercises();
+}
+
+// Weekly set volume per primary muscle group (this week vs last)
+async function loadMuscleVolume() {
+  const card = document.getElementById('muscle-volume-card');
+  const list = document.getElementById('muscle-volume-list');
+  if (!card || !list) return;
+  try {
+    const data = await API.get('/api/stats/muscle-volume');
+    if (!data.muscles || data.muscles.length === 0) { card.style.display = 'none'; return; }
+
+    const maxSets = Math.max(...data.muscles.map(m => Math.max(m.sets, m.prev_sets)), 1);
+    list.innerHTML = data.muscles.map(m => {
+      const pct = Math.round((m.sets / maxSets) * 100);
+      let trend = '';
+      if (m.prev_sets > 0 || m.sets > 0) {
+        const diff = m.sets - m.prev_sets;
+        if (diff > 0) trend = `<span style="color:var(--success,#4ade80);">▲ +${diff}</span>`;
+        else if (diff < 0) trend = `<span style="color:#ef4444;">▼ ${diff}</span>`;
+        else trend = `<span style="color:var(--text-muted);">=</span>`;
+      }
+      return `
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:7px;">
+          <div style="width:92px; font-size:0.78rem; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${m.muscle}</div>
+          <div style="flex:1; height:14px; background:var(--bg-elevated); border-radius:7px; overflow:hidden;">
+            <div style="width:${pct}%; height:100%; background:var(--accent); border-radius:7px; min-width:${m.sets > 0 ? 4 : 0}px;"></div>
+          </div>
+          <div style="width:64px; text-align:right; font-size:0.75rem; font-variant-numeric:tabular-nums;">
+            <strong>${m.sets}</strong> ${trend}
+          </div>
+        </div>`;
+    }).join('');
+    card.style.display = 'block';
+  } catch (e) {
+    card.style.display = 'none';
+  }
 }
 
 async function loadExercises() {
