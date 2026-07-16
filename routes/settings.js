@@ -31,9 +31,19 @@ router.put('/settings', requireAuth, (req, res) => {
   const db = getDb();
   const settings = getOrCreateSettings(db, req.session.userId);
 
-  const { auto_progress } = req.body;
-  db.prepare('UPDATE user_settings SET auto_progress = ? WHERE user_id = ?').run(
+  const { auto_progress, deload_enabled, deload_interval_weeks, deload_percent } = req.body;
+
+  const clamp = (v, min, max) => Math.min(max, Math.max(min, parseInt(v)));
+
+  db.prepare(`
+    UPDATE user_settings
+    SET auto_progress = ?, deload_enabled = ?, deload_interval_weeks = ?, deload_percent = ?
+    WHERE user_id = ?
+  `).run(
     auto_progress !== undefined ? (auto_progress ? 1 : 0) : settings.auto_progress,
+    deload_enabled !== undefined ? (deload_enabled ? 1 : 0) : (settings.deload_enabled ?? 1),
+    deload_interval_weeks !== undefined ? clamp(deload_interval_weeks, 3, 12) : (settings.deload_interval_weeks ?? 6),
+    deload_percent !== undefined ? clamp(deload_percent, 40, 80) : (settings.deload_percent ?? 55),
     req.session.userId
   );
 

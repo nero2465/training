@@ -34,6 +34,142 @@ async function init() {
 
   // Load plans
   loadPlans();
+
+  // Deload status + exercise rotation hints (non-blocking)
+  loadDeloadStatus();
+  loadRotationHints();
+}
+
+// ── Deload ────────────────────────────────────────────────
+
+async function loadDeloadStatus() {
+  const card = document.getElementById('deload-card');
+  if (!card) return;
+  try {
+    const st = await API.get('/api/deload/status');
+    if (!st.enabled) { card.classList.add('hidden'); return; }
+
+    if (st.active) {
+      const daysLeft = Math.max(0, Math.ceil((new Date(st.active_until) - new Date()) / 86400000));
+      card.innerHTML = `
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div style="font-size:1.8rem;">🔄</div>
+          <div style="flex:1;">
+            <div style="font-weight:700; color:var(--accent);">Deload-Woche aktiv</div>
+            <div style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">
+              Noch ${daysLeft} Tag${daysLeft === 1 ? '' : 'e'} · halbe Sätze, reduziertes Gewicht (${st.deload_percent}%)
+            </div>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="endDeload()">Beenden</button>
+        </div>`;
+      card.classList.remove('hidden');
+    } else if (st.due) {
+      card.innerHTML = `
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div style="font-size:1.8rem;">🛌</div>
+          <div style="flex:1;">
+            <div style="font-weight:700;">Deload fällig</div>
+            <div style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">
+              Woche ${st.week_in_cycle} im Zyklus (Intervall: ${st.interval_weeks} Wochen) — Zeit für eine Erholungswoche.
+            </div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="startDeload()">Starten</button>
+        </div>`;
+      card.classList.remove('hidden');
+    } else if (st.early_warning) {
+      card.innerHTML = `
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div style="font-size:1.8rem;">😤</div>
+          <div style="flex:1;">
+            <div style="font-weight:700;">Viel „zu schwer" zuletzt</div>
+            <div style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">
+              Deine letzten Trainings hatten auffällig viele 😤-Sätze — ein vorgezogener Deload könnte helfen.
+            </div>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="startDeload()">Deload starten</button>
+        </div>`;
+      card.classList.remove('hidden');
+    } else if (st.post_deload) {
+      card.innerHTML = `
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div style="font-size:1.8rem;">🌱</div>
+          <div style="flex:1;">
+            <div style="font-weight:700;">Wiedereinstieg nach Deload</div>
+            <div style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">
+              Diese Woche empfiehlt die App 90 % deiner alten Arbeitsgewichte — ab nächster Woche geht's normal weiter.
+            </div>
+          </div>
+        </div>`;
+      card.classList.remove('hidden');
+    } else {
+      card.classList.add('hidden');
+    }
+  } catch (e) {
+    card.classList.add('hidden');
+  }
+}
+
+async function startDeload() {
+  if (!confirm('Deload-Woche jetzt starten? 7 Tage lang gelten reduzierte Empfehlungen.')) return;
+  try {
+    await API.post('/api/deload/start', {});
+    showToast('Deload-Woche gestartet 🛌', 'success');
+    loadDeloadStatus();
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
+}
+
+async function endDeload() {
+  if (!confirm('Deload beenden? Der neue Trainingszyklus startet heute.')) return;
+  try {
+    await API.post('/api/deload/end', {});
+    showToast('Deload beendet — neuer Zyklus läuft', 'success');
+    loadDeloadStatus();
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
+}
+
+// ── Exercise rotation hints ───────────────────────────────
+
+async function loadRotationHints() {
+  const card = document.getElementById('rotation-card');
+  if (!card) return;
+  try {
+    const hints = await API.get('/api/rotation-hints');
+    const dismissed = JSON.parse(localStorage.getItem('rotationDismissed') || '{}');
+    const now = Date.now();
+    // Re-show a dismissed hint after 4 weeks
+    const visible = hints.filter(h => !dismissed[h.exercise_id] || (now - dismissed[h.exercise_id]) > 28 * 86400000);
+
+    if (visible.length === 0) { card.classList.add('hidden'); return; }
+
+    const h = visible[0]; // one hint at a time is enough
+    card.innerHTML = `
+      <div style="display:flex; align-items:flex-start; gap:12px;">
+        <div style="font-size:1.8rem;">🔀</div>
+        <div style="flex:1;">
+          <div style="font-weight:700;">Zeit für Abwechslung?</div>
+          <div style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">
+            <strong style="color:var(--text-primary);">${escapeHtml(h.name)}</strong> machst du seit ${h.weeks} Wochen.
+            Alternativen für dieselbe Muskelgruppe:<br>
+            ${h.alternatives.map(a => `• ${escapeHtml(a)}`).join('<br>')}
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="dismissRotationHint(${h.exercise_id})" title="Ausblenden">×</button>
+      </div>`;
+    card.classList.remove('hidden');
+  } catch (e) {
+    card.classList.add('hidden');
+  }
+}
+
+function dismissRotationHint(exerciseId) {
+  const dismissed = JSON.parse(localStorage.getItem('rotationDismissed') || '{}');
+  dismissed[exerciseId] = Date.now();
+  localStorage.setItem('rotationDismissed', JSON.stringify(dismissed));
+  loadRotationHints();
 }
 
 async function loadLastWorkout() {

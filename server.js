@@ -40,6 +40,7 @@ app.use('/api', require('./routes/plans'));
 app.use('/api', require('./routes/workouts'));
 app.use('/api', require('./routes/exercises'));
 app.use('/api', require('./routes/settings'));
+app.use('/api', require('./routes/deload').router);
 
 // Serve index.html for root
 app.get('/', (req, res) => {

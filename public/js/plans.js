@@ -309,19 +309,32 @@ async function loadSessionExercises(sessionId) {
   }
 }
 
+const SCHEME_LABELS = {
+  straight:           'Konstant',
+  double_progression: 'Double Progression',
+  pyramid_asc:        'Pyramide ↑',
+  pyramid_desc:       'Reverse Pyramide ↓',
+  topset_backoff:     'Top-Set + Backoff'
+};
+
 function createExerciseItem(ex, sessionId, idx, total) {
   const div = document.createElement('div');
   div.className = 'exercise-item';
   div.id = `se-${ex.id}`;
+  div.dataset.scheme = ex.scheme || 'straight';
 
   const repsDisplay = ex.reps_min === ex.reps_max
     ? `${ex.reps_min}`
     : `${ex.reps_min}–${ex.reps_max}`;
 
+  const schemeTag = (ex.scheme && ex.scheme !== 'straight')
+    ? ` <span style="font-size:0.68rem; background:rgba(96,165,250,0.12); color:var(--accent); border-radius:4px; padding:1px 5px;">${SCHEME_LABELS[ex.scheme] || ex.scheme}</span>`
+    : '';
+
   div.innerHTML = `
     <div class="exercise-item-info" style="cursor:pointer;" onclick="openEditExerciseItem(${ex.id}, ${sessionId})">
       <div class="exercise-item-name">${escapeHtml(ex.name)}</div>
-      <div class="exercise-item-meta">${ex.sets} × ${repsDisplay} Wdh.</div>
+      <div class="exercise-item-meta">${ex.sets} × ${repsDisplay} Wdh.${schemeTag}</div>
     </div>
     <div class="exercise-item-actions">
       <button class="order-btn" onclick="moveExercise(${ex.id}, ${sessionId}, -1)" ${idx === 0 ? 'disabled' : ''} title="Nach oben">▲</button>
@@ -383,6 +396,11 @@ function openEditExerciseItem(seId, sessionId) {
     repsMax = match[3] ? parseInt(match[3]) : repsMin;
   }
 
+  const currentScheme = container.dataset.scheme || 'straight';
+  const schemeOptions = Object.entries(SCHEME_LABELS).map(([val, label]) =>
+    `<option value="${val}" ${val === currentScheme ? 'selected' : ''}>${label}</option>`
+  ).join('');
+
   infoDiv.innerHTML = `
     <div class="exercise-item-name">${escapeHtml(name)}</div>
     <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:4px;">
@@ -392,6 +410,12 @@ function openEditExerciseItem(seId, sessionId) {
       <span class="text-muted">–</span>
       <input type="number" class="form-control reps-input" value="${repsMax}" min="1" max="100" id="edit-rmax-${seId}" placeholder="Max" style="width:56px;">
       <span class="text-muted" style="font-size:0.75rem;">Wdh.</span>
+    </div>
+    <div style="display:flex; gap:6px; align-items:center; margin-top:6px; flex-wrap:wrap;">
+      <span class="text-muted" style="font-size:0.75rem;">Schema:</span>
+      <select class="form-control" id="edit-scheme-${seId}" style="width:auto; font-size:0.8rem; padding:4px 8px;">
+        ${schemeOptions}
+      </select>
       <button class="btn btn-primary btn-sm" onclick="saveExerciseEdit(${seId}, ${sessionId})">OK</button>
       <button class="btn btn-outline btn-sm" onclick="loadSessionExercises(${sessionId})">✕</button>
     </div>
@@ -405,6 +429,7 @@ async function saveExerciseEdit(seId, sessionId) {
   const sets = parseInt(document.getElementById(`edit-sets-${seId}`).value);
   const repsMin = parseInt(document.getElementById(`edit-rmin-${seId}`).value);
   const repsMax = parseInt(document.getElementById(`edit-rmax-${seId}`).value);
+  const scheme = document.getElementById(`edit-scheme-${seId}`)?.value || 'straight';
 
   if (!sets || !repsMin || !repsMax || sets < 1 || repsMin < 1 || repsMax < repsMin) {
     showToast('Ungültige Werte', 'error');
@@ -415,7 +440,8 @@ async function saveExerciseEdit(seId, sessionId) {
     await API.put(`/api/session-exercises/${seId}`, {
       sets,
       reps_min: repsMin,
-      reps_max: repsMax
+      reps_max: repsMax,
+      scheme
     });
     await loadSessionExercises(sessionId);
     showToast('Gespeichert', 'success');
