@@ -829,6 +829,11 @@ function openCatalogEdit(exerciseId) {
           <input type="number" class="form-control" id="catalog-edit-increment-${exerciseId}" value="${ex.increment_kg || ''}" placeholder="2.5" step="0.5" min="0.5" style="font-size:0.85rem; padding:6px 8px; width:80px;">
           <span style="font-size:0.8rem; color:var(--text-muted);">kg</span>
         </div>
+        <div class="form-group" style="margin-bottom:8px; display:flex; align-items:center; gap:8px;">
+          <label style="font-size:0.8rem; color:var(--text-muted); white-space:nowrap;">Bodyweight-Anteil</label>
+          <input type="number" class="form-control" id="catalog-edit-bwfactor-${exerciseId}" value="${ex.bw_factor ? Math.round(ex.bw_factor * 100) : ''}" placeholder="z.B. 65" step="5" min="5" max="150" style="font-size:0.85rem; padding:6px 8px; width:80px;">
+          <span style="font-size:0.8rem; color:var(--text-muted);">% des Körpergewichts (für BW-Übungen)</span>
+        </div>
         <div style="display:flex; gap:6px;">
           <button class="btn btn-primary btn-sm" onclick="saveCatalogEdit(${exerciseId})">Speichern</button>
           <button class="btn btn-outline btn-sm" onclick="cancelCatalogEdit(${exerciseId})">Abbrechen</button>
@@ -846,6 +851,8 @@ async function saveCatalogEdit(exerciseId) {
   const technique_tip = document.getElementById(`catalog-edit-tip-${exerciseId}`)?.value?.trim();
   const incrementRaw = document.getElementById(`catalog-edit-increment-${exerciseId}`)?.value;
   const increment_kg = incrementRaw ? parseFloat(incrementRaw) : 0;
+  const bwRaw = document.getElementById(`catalog-edit-bwfactor-${exerciseId}`)?.value;
+  const bw_factor = bwRaw ? parseFloat(bwRaw) / 100 : null;
 
   if (!name) {
     showToast('Name ist erforderlich', 'error');
@@ -853,7 +860,7 @@ async function saveCatalogEdit(exerciseId) {
   }
 
   try {
-    const updated = await API.put(`/api/exercises/${exerciseId}`, { name, muscle_groups, technique_tip, increment_kg });
+    const updated = await API.put(`/api/exercises/${exerciseId}`, { name, muscle_groups, technique_tip, increment_kg, bw_factor });
     // Replace row with fresh rendered row
     const row = document.getElementById(`catalog-row-${exerciseId}`);
     if (row) {

@@ -93,6 +93,17 @@ function createTables() {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       FOREIGN KEY (exercise_id) REFERENCES exercises(id)
     );
+
+    CREATE TABLE IF NOT EXISTS body_metrics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      weight REAL,
+      waist REAL,
+      arm REAL,
+      chest REAL,
+      measured_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
   `);
 }
 
@@ -126,6 +137,13 @@ function runMigrations() {
     'ALTER TABLE session_exercises ADD COLUMN scheme TEXT',
     // Paket 2: Hantelscheiben-Inventar (JSON)
     'ALTER TABLE user_settings ADD COLUMN plate_inventory TEXT',
+    // Paket 5: Körperprofil + Bodyweight-Faktor pro Übung
+    'ALTER TABLE user_settings ADD COLUMN height_cm INTEGER',
+    'ALTER TABLE user_settings ADD COLUMN birth_year INTEGER',
+    'ALTER TABLE user_settings ADD COLUMN sex TEXT',
+    'ALTER TABLE user_settings ADD COLUMN activity_level REAL',
+    'ALTER TABLE user_settings ADD COLUMN goal TEXT',
+    'ALTER TABLE exercises ADD COLUMN bw_factor REAL',
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch(e) { /* column already exists */ }
@@ -134,6 +152,36 @@ function runMigrations() {
   deduplicateExercises();
   seedExerciseIncrements();
   seedCrossfitExercises();
+  seedBodyweightFactors();
+}
+
+// Share of bodyweight actually lifted per bodyweight exercise (literature
+// estimates, user-adjustable in the catalog editor). Only fills NULL —
+// user-tuned values are never overwritten.
+function seedBodyweightFactors() {
+  const factors = [
+    ['Dips', 0.95],
+    ['Bank-Dips mit geraden Beinen auf Ablage', 0.6],
+    ['Klimmzüge', 0.95],
+    ['Klimmzug', 0.95],
+    ['Pull-ups', 0.95],
+    ['Liegestütze', 0.65],
+    ['Push-ups', 0.65],
+    ['Sit-ups / AbMat', 0.4],
+    ['Crunches', 0.4],
+    ['Air Squats', 0.85],
+    ['Lunges', 0.85],
+    ['Burpees', 0.65],
+    ['Hanging Knee Raises', 0.35],
+    ['Toes-to-Bar', 0.35],
+    ['Handstand Push-ups', 0.85],
+    ['Wall Walks', 0.6],
+  ];
+  const stmt = db.prepare('UPDATE exercises SET bw_factor = ? WHERE bw_factor IS NULL AND name = ?');
+  const run = db.transaction(() => {
+    for (const [name, f] of factors) stmt.run(f, name);
+  });
+  run();
 }
 
 // Sets larger default weight increments for big compound lifts (only where the

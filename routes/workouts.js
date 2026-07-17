@@ -155,7 +155,20 @@ router.get('/workouts/:id', requireAuth, (req, res) => {
   res.json({ ...workout, sets });
 });
 
+// Body weight (kg) at a given date: latest measurement at or before it.
+// Returns 0 when the user never logged a weight.
+function bodyWeightAt(db, userId, dateIso) {
+  const row = db.prepare(`
+    SELECT weight FROM body_metrics
+    WHERE user_id = ? AND weight IS NOT NULL AND measured_at <= ?
+    ORDER BY measured_at DESC LIMIT 1
+  `).get(userId, dateIso);
+  return row ? row.weight : 0;
+}
+
 // GET /api/progress/:exercise_id
+// Bodyweight sets are valued at (body weight at workout date × bw_factor)
+// plus any added weight — honest volume/1RM for BW exercises.
 router.get('/progress/:exercise_id', requireAuth, (req, res) => {
   const db = getDb();
   const rows = db.prepare(`
@@ -177,10 +190,15 @@ router.get('/progress/:exercise_id', requireAuth, (req, res) => {
     ORDER BY w.started_at ASC, ws.set_number ASC
   `).all(req.session.userId, req.params.exercise_id);
 
+  const exRow = db.prepare('SELECT bw_factor FROM exercises WHERE id = ?').get(req.params.exercise_id);
+  const bwFactor = (exRow && exRow.bw_factor) || 0;
+
   const progress = [];
   let current = null;
+  let workoutBw = 0;
   for (const row of rows) {
     if (!current || current.workout_id !== row.workout_id) {
+      workoutBw = bwFactor > 0 ? bodyWeightAt(db, req.session.userId, row.started_at) : 0;
       current = {
         date: row.date,
         workout_id: row.workout_id,
@@ -193,15 +211,21 @@ router.get('/progress/:exercise_id', requireAuth, (req, res) => {
       progress.push(current);
     }
 
-    current.max_weight = Math.max(current.max_weight, row.weight);
-    current.total_volume += row.weight * row.reps;
+    // Effective load: BW sets carry bodyweight × factor on top of added weight
+    const effWeight = row.is_bodyweight === 1
+      ? row.weight + workoutBw * bwFactor
+      : row.weight;
+
+    current.max_weight = Math.max(current.max_weight, effWeight);
+    current.total_volume += effWeight * row.reps;
     current.est_1rm = Math.max(
       current.est_1rm,
-      row.reps <= 1 ? row.weight : row.weight * (1.0 + row.reps / 30.0)
+      row.reps <= 1 ? effWeight : effWeight * (1.0 + row.reps / 30.0)
     );
     current.sets.push({
       set_number: row.set_number,
       weight: row.weight,
+      effective_weight: Math.round(effWeight * 10) / 10,
       reps: row.reps,
       is_bodyweight: row.is_bodyweight,
     });

@@ -40,6 +40,7 @@ let suggestedRating = 2;       // computed from last logged set vs targets
 let setPlans = {};             // { sessionExerciseId: [{set, weight, reps}] } from scheme/deload
 let deloadActive = false;      // true while the whole workout runs in deload mode
 let plateInventory = null;     // user's plate inventory from settings (null = feature off)
+let bodyWeightKg = 0;          // latest logged body weight (0 = unknown)
 
 async function init() {
   // Ensure audio ctx available
@@ -67,6 +68,14 @@ async function init() {
   // Plate inventory for the loading hint (non-blocking, feature off if unset)
   API.get('/api/settings').then(s => {
     plateInventory = parsePlateInventory(s.plate_inventory);
+    updatePlateHint();
+  }).catch(() => {});
+
+  // Latest body weight for effective-load display on bodyweight exercises
+  API.get('/api/body-metrics').then(rows => {
+    for (let i = rows.length - 1; i >= 0; i--) {
+      if (rows[i].weight) { bodyWeightKg = rows[i].weight; break; }
+    }
     updatePlateHint();
   }).catch(() => {});
 
@@ -429,11 +438,28 @@ function updateWeightDisplay() {
   updatePlateHint();
 }
 
-// "Pro Seite: 20 + 10 + 2,5" under the weight input (needs inventory in settings)
+// Under the weight input: plate loadout for barbell work, or the effective
+// load for bodyweight sets (body weight × bw_factor + added weight).
 function updatePlateHint() {
   const el = document.getElementById('plate-hint');
   if (!el) return;
-  if (!plateInventory || currentBodyweight || currentWeight < plateInventory.bar) {
+
+  if (currentBodyweight) {
+    const ex = exercises[currentExerciseIndex];
+    const factor = ex && ex.bw_factor ? ex.bw_factor : 0;
+    if (bodyWeightKg > 0 && factor > 0) {
+      const eff = Math.round((bodyWeightKg * factor + currentWeight) * 10) / 10;
+      const extra = currentWeight > 0 ? ` + ${formatWeight(currentWeight)} Zusatz` : '';
+      el.innerHTML = `⚖️ Effektive Last: <strong style="color:var(--text-primary);">≈ ${formatWeight(eff)}</strong> ` +
+        `<span style="opacity:0.75;">(${Math.round(factor * 100)}% von ${bodyWeightKg} kg${extra})</span>`;
+      el.style.display = 'block';
+    } else {
+      el.style.display = 'none';
+    }
+    return;
+  }
+
+  if (!plateInventory || currentWeight < plateInventory.bar) {
     el.style.display = 'none';
     return;
   }

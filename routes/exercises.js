@@ -97,12 +97,13 @@ router.put('/exercises/:id', requireAuth, (req, res) => {
     emom_focus,
     emom_base_reps,
     emom_reps_unit,
+    bw_factor,
   } = req.body;
 
   db.prepare(`
     UPDATE exercises
     SET name = ?, muscle_groups = ?, technique_tip = ?, active = ?, gif_path = ?, increment_kg = ?,
-        emom_focus = ?, emom_base_reps = ?, emom_reps_unit = ?
+        emom_focus = ?, emom_base_reps = ?, emom_reps_unit = ?, bw_factor = ?
     WHERE id = ?
   `).run(
     name !== undefined ? name.trim() : exercise.name,
@@ -114,6 +115,7 @@ router.put('/exercises/:id', requireAuth, (req, res) => {
     emom_focus !== undefined ? (emom_focus || null) : exercise.emom_focus,
     emom_base_reps !== undefined ? (emom_base_reps ? parseInt(emom_base_reps, 10) : null) : exercise.emom_base_reps,
     emom_reps_unit !== undefined ? (emom_reps_unit || null) : exercise.emom_reps_unit,
+    bw_factor !== undefined ? (bw_factor > 0 && bw_factor <= 1.5 ? bw_factor : null) : exercise.bw_factor,
     exercise.id
   );
 
