@@ -44,6 +44,8 @@ app.use('/api', require('./routes/deload').router);
 app.use('/api', require('./routes/orm'));
 app.use('/api', require('./routes/stats'));
 app.use('/api', require('./routes/body'));
+app.use('/api', require('./routes/special'));
+app.use('/api', require('./routes/cardio'));
 
 // Serve index.html for root
 app.get('/', (req, res) => {

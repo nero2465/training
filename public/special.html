@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a1a2e">
+  <title>Sondertraining</title>
+  <link rel="stylesheet" href="/css/app.css">
+  <style>
+    .sp-intro { text-align:center; margin-bottom:20px; }
+    .sp-intro-icon { font-size:2.8rem; margin-bottom:8px; }
+    .sp-intro h2 { font-size:1.4rem; margin:0 0 4px; color:var(--text-primary); }
+    .sp-intro p { font-size:0.85rem; color:var(--text-muted); margin:0; }
+
+    .muscle-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .muscle-btn {
+      padding:14px 8px; border-radius:var(--radius); border:2px solid var(--border);
+      background:var(--bg-elevated); color:var(--text-primary);
+      font-size:0.92rem; font-weight:700; cursor:pointer; text-align:center;
+      -webkit-tap-highlight-color:transparent;
+    }
+    .muscle-btn small { display:block; font-weight:400; font-size:0.72rem; color:var(--text-muted); margin-top:2px; }
+    .muscle-btn:active { border-color:var(--accent); }
+
+    .sp-ex-row {
+      display:flex; align-items:center; gap:10px; padding:9px 8px;
+      border:1px solid var(--border); border-radius:var(--radius-sm);
+      margin-bottom:5px; background:var(--bg-elevated);
+    }
+    .sp-ex-row.selected { border-color:rgba(96,165,250,0.4); background:rgba(96,165,250,0.07); }
+    .sp-ex-name { flex:1; font-size:0.88rem; font-weight:500; }
+    .sp-ex-muscles { font-size:0.72rem; color:var(--text-muted); }
+    .sp-section-title {
+      font-size:0.72rem; color:var(--text-muted); text-transform:uppercase;
+      letter-spacing:0.07em; padding:10px 0 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="page-header">
+      <button class="btn btn-ghost btn-sm" onclick="goBack()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+        </svg>
+      </button>
+      <h1>Sondertraining</h1>
+      <div style="width:40px;"></div>
+    </header>
+
+    <main class="page-content">
+
+      <!-- ── Step 1: Muscle picker ─────────────────────── -->
+      <div id="sp-muscles">
+        <div class="sp-intro">
+          <div class="sp-intro-icon">🎯</div>
+          <h2>Gezieltes Extra-Training</h2>
+          <p>Wähle eine Muskelgruppe — die App stellt dir<br>eine passende Einheit zusammen (Grundübung zuerst).</p>
+        </div>
+        <div class="muscle-grid" id="muscle-grid">
+          <div class="loading" style="grid-column:1/-1; padding:20px;"><div class="spinner"></div></div>
+        </div>
+      </div>
+
+      <!-- ── Step 2: Exercise selection ────────────────── -->
+      <div id="sp-exercises" class="hidden">
+        <div style="text-align:center; margin-bottom:12px;">
+          <div style="font-weight:700; font-size:1.15rem;" id="sp-selected-muscle"></div>
+          <div style="font-size:0.78rem; color:var(--text-muted);">Vorschlag anpassen: abhaken / dazunehmen</div>
+        </div>
+
+        <div class="card" style="padding:10px 12px;">
+          <div class="sp-section-title" style="padding-top:0;">✅ Deine Einheit (<span id="sp-count">0</span> Übungen · je 3 × 8–12)</div>
+          <div id="sp-selected-list"></div>
+          <div class="sp-section-title">Weitere passende Übungen</div>
+          <div id="sp-other-list" style="max-height:220px; overflow-y:auto;"></div>
+        </div>
+
+        <div style="display:flex; gap:8px; margin-top:14px;">
+          <button class="btn btn-secondary" style="flex:0 0 auto; padding:13px 16px;" onclick="backToMuscles()">← Zurück</button>
+          <button class="btn btn-primary" id="sp-start-btn" style="flex:1; font-size:1rem; padding:13px;" onclick="startSpecial()">
+            Training starten
+          </button>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <script src="/js/common.js"></script>
+  <script src="/js/special.js"></script>
+</body>
+</html>
