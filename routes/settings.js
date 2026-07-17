@@ -32,7 +32,7 @@ router.put('/settings', requireAuth, (req, res) => {
   const settings = getOrCreateSettings(db, req.session.userId);
 
   const { auto_progress, deload_enabled, deload_interval_weeks, deload_percent, plate_inventory,
-          height_cm, birth_year, sex, activity_level, goal } = req.body;
+          height_cm, birth_year, sex, activity_level, goal, job_activity, extra_sport_min } = req.body;
 
   const clamp = (v, min, max) => Math.min(max, Math.max(min, parseInt(v)));
 
@@ -62,11 +62,14 @@ router.put('/settings', requireAuth, (req, res) => {
   const newSex = sex !== undefined ? (validSex.includes(sex) ? sex : null) : (settings.sex ?? null);
   const validGoals = ['cut', 'maintain', 'bulk'];
   const newGoal = goal !== undefined ? (validGoals.includes(goal) ? goal : null) : (settings.goal ?? null);
+  const validJobs = ['sitzend', 'stehend', 'koerperlich', 'schwer'];
+  const newJob = job_activity !== undefined ? (validJobs.includes(job_activity) ? job_activity : null) : (settings.job_activity ?? null);
+  const newExtraSport = optNum(extra_sport_min, 0, 2000, settings.extra_sport_min);
 
   db.prepare(`
     UPDATE user_settings
     SET auto_progress = ?, deload_enabled = ?, deload_interval_weeks = ?, deload_percent = ?, plate_inventory = ?,
-        height_cm = ?, birth_year = ?, sex = ?, activity_level = ?, goal = ?
+        height_cm = ?, birth_year = ?, sex = ?, activity_level = ?, goal = ?, job_activity = ?, extra_sport_min = ?
     WHERE user_id = ?
   `).run(
     auto_progress !== undefined ? (auto_progress ? 1 : 0) : settings.auto_progress,
@@ -74,7 +77,7 @@ router.put('/settings', requireAuth, (req, res) => {
     deload_interval_weeks !== undefined ? clamp(deload_interval_weeks, 3, 12) : (settings.deload_interval_weeks ?? 6),
     deload_percent !== undefined ? clamp(deload_percent, 40, 80) : (settings.deload_percent ?? 55),
     plateJson,
-    newHeight, newBirthYear, newSex, newActivity, newGoal,
+    newHeight, newBirthYear, newSex, newActivity, newGoal, newJob, newExtraSport,
     req.session.userId
   );
 

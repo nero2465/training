@@ -5,6 +5,7 @@
 let bodySettings = null;
 let bodyMetrics = [];
 let weightChart = null;
+let weeklyTrainingMin = 0; // Ø minutes/week from logged workouts + cardio (last 4 weeks)
 
 async function init() {
   document.getElementById('nav-placeholder').innerHTML = buildNav(null);
@@ -13,14 +14,18 @@ async function init() {
   if (!user) return;
 
   try {
-    const [settings, metrics] = await Promise.all([
+    const [settings, metrics, workouts, cardio] = await Promise.all([
       API.get('/api/settings'),
-      API.get('/api/body-metrics')
+      API.get('/api/body-metrics'),
+      API.get('/api/workouts').catch(() => []),
+      API.get('/api/cardio').catch(() => [])
     ]);
     bodySettings = settings;
     bodyMetrics = metrics;
+    weeklyTrainingMin = computeWeeklyTrainingMinutes(workouts, cardio);
 
     fillProfileForm();
+    prefillWeightField();
     renderChart();
     renderMetricList();
     renderNutrition();
@@ -30,6 +35,26 @@ async function init() {
   }
 }
 
+// Average training minutes per week over the last 28 days, from what the
+// app already knows: strength workout durations + cardio entries.
+function computeWeeklyTrainingMinutes(workouts, cardio) {
+  const cutoff = Date.now() - 28 * 86400000;
+  let minutes = 0;
+
+  for (const w of workouts) {
+    if (!w.ended_at) continue;
+    const start = new Date(w.started_at), end = new Date(w.ended_at);
+    if (start.getTime() < cutoff) continue;
+    // Cap single sessions at 3h — protects against forgot-to-end workouts
+    minutes += Math.min(180, Math.max(0, (end - start) / 60000));
+  }
+  for (const c of cardio) {
+    if (new Date(c.performed_at).getTime() < cutoff) continue;
+    minutes += c.duration_min;
+  }
+  return Math.round(minutes / 4); // per week
+}
+
 /* ── Profile ──────────────────────────────────────────────── */
 
 function fillProfileForm() {
@@ -37,7 +62,17 @@ function fillProfileForm() {
   if (s.height_cm) document.getElementById('profile-height').value = s.height_cm;
   if (s.birth_year) document.getElementById('profile-birthyear').value = s.birth_year;
   if (s.sex) document.getElementById('profile-sex').value = s.sex;
-  if (s.activity_level) document.getElementById('profile-activity').value = String(s.activity_level);
+  if (s.job_activity) document.getElementById('profile-job').value = s.job_activity;
+  if (s.extra_sport_min) document.getElementById('profile-extra-sport').value = s.extra_sport_min;
+
+  // Show what the app derives from the training log
+  const info = document.getElementById('training-time-info');
+  if (info) {
+    const extra = s.extra_sport_min || 0;
+    info.innerHTML = `📊 Sport wird automatisch berechnet: Ø <strong>${weeklyTrainingMin} min/Woche</strong> aus deinen Trainings + Cardio (letzte 4 Wochen)` +
+      (extra > 0 ? ` + ${extra} min weiterer Sport` : '');
+    info.style.display = 'block';
+  }
 }
 
 let profileSaveTimer = null;
@@ -48,11 +83,13 @@ function saveProfile() {
       height_cm: document.getElementById('profile-height').value || null,
       birth_year: document.getElementById('profile-birthyear').value || null,
       sex: document.getElementById('profile-sex').value || null,
-      activity_level: document.getElementById('profile-activity').value || null
+      job_activity: document.getElementById('profile-job').value || null,
+      extra_sport_min: document.getElementById('profile-extra-sport').value || null
     };
     try {
       bodySettings = await API.put('/api/settings', payload);
       showToast('Profil gespeichert', 'success');
+      fillProfileForm();
       renderNutrition();
       renderHrZones();
     } catch (e) {
@@ -80,6 +117,13 @@ function toggleMeasurements() {
   btn.textContent = open ? '+ Umfänge erfassen (optional)' : '− Umfänge ausblenden';
 }
 
+// Pre-fill the weight input with the latest entry so the next weigh-in is
+// just a small correction instead of typing from scratch.
+function prefillWeightField() {
+  const w = latestWeight();
+  if (w) document.getElementById('new-weight').value = w;
+}
+
 async function addWeight() {
   const weight = document.getElementById('new-weight').value;
   const waist = document.getElementById('new-waist')?.value;
@@ -94,10 +138,12 @@ async function addWeight() {
   try {
     const row = await API.post('/api/body-metrics', { weight, waist, chest, arm });
     bodyMetrics.push(row);
-    ['new-weight', 'new-waist', 'new-chest', 'new-arm'].forEach(id => {
+    // Girth fields clear, weight stays visible as the new baseline
+    ['new-waist', 'new-chest', 'new-arm'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.value = '';
     });
+    prefillWeightField();
     showToast('Gespeichert 📏', 'success');
     renderChart();
     renderMetricList();
@@ -113,6 +159,7 @@ async function deleteMetric(id) {
     await API.delete(`/api/body-metrics/${id}`);
     bodyMetrics = bodyMetrics.filter(m => m.id !== id);
     showToast('Gelöscht', 'success');
+    prefillWeightField();
     renderChart();
     renderMetricList();
     renderNutrition();
@@ -189,6 +236,10 @@ function renderMetricList() {
 
 /* ── Nutrition (Mifflin-St-Jeor, offline) ─────────────────── */
 
+// PAL base by job/daily activity — sport is added on top from real logs
+const JOB_PAL = { sitzend: 1.35, stehend: 1.5, koerperlich: 1.65, schwer: 1.85 };
+const JOB_LABEL = { sitzend: 'sitzend', stehend: 'stehend/gehend', koerperlich: 'körperlich aktiv', schwer: 'schwere Arbeit' };
+
 function renderNutrition() {
   const s = bodySettings;
   const weight = latestWeight();
@@ -196,8 +247,9 @@ function renderNutrition() {
   const content = document.getElementById('nutrition-content');
 
   const age = s.birth_year ? (new Date().getFullYear() - s.birth_year) : null;
+  const hasActivity = s.job_activity || s.activity_level; // legacy fallback
 
-  if (!weight || !s.height_cm || !age || !s.sex || !s.activity_level) {
+  if (!weight || !s.height_cm || !age || !s.sex || !hasActivity) {
     incomplete.style.display = 'block';
     content.style.display = 'none';
     return;
@@ -209,9 +261,23 @@ function renderNutrition() {
   document.querySelectorAll('.goal-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.goal === goal));
 
+  // PAL: job base + sport surcharge from actual weekly training time
+  // (~0.04 PAL per weekly hour, capped). Legacy: old combined activity_level.
+  let pal, palDetail;
+  if (s.job_activity) {
+    const base = JOB_PAL[s.job_activity] || 1.4;
+    const sportMin = weeklyTrainingMin + (s.extra_sport_min || 0);
+    const surcharge = Math.min(0.45, (sportMin / 60) * 0.04);
+    pal = base + surcharge;
+    palDetail = `PAL ${base.toFixed(2)} (Beruf: ${JOB_LABEL[s.job_activity]}) + ${surcharge.toFixed(2)} (Sport: Ø ${sportMin} min/Woche) = <strong>${pal.toFixed(2)}</strong>`;
+  } else {
+    pal = s.activity_level;
+    palDetail = `PAL ${pal} (alte kombinierte Skala — wähle „Beruf/Alltag" für die genauere Berechnung)`;
+  }
+
   // BMR (Mifflin-St-Jeor) → TDEE → goal calories
   const bmr = 10 * weight + 6.25 * s.height_cm - 5 * age + (s.sex === 'm' ? 5 : -161);
-  const tdee = Math.round(bmr * s.activity_level);
+  const tdee = Math.round(bmr * pal);
   const goalDelta = { cut: -400, maintain: 0, bulk: 300 }[goal];
   const kcal = tdee + goalDelta;
 
@@ -229,6 +295,7 @@ function renderNutrition() {
   const bmi = (weight / Math.pow(s.height_cm / 100, 2)).toFixed(1);
   document.getElementById('nutri-detail').innerHTML =
     `Grundumsatz (BMR): <strong>${Math.round(bmr)} kcal</strong> · BMI: <strong>${bmi}</strong><br>` +
+    `${palDetail}<br>` +
     `Protein: ${proteinPerKg} g/kg Körpergewicht · Formel: Mifflin-St-Jeor · Richtwerte, keine medizinische Beratung.`;
 }
 

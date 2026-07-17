@@ -126,17 +126,21 @@
             </select>
           </div>
           <div>
-            <label class="form-label" style="font-size:0.75rem;">Aktivität (Alltag + Sport)</label>
-            <select class="form-control" id="profile-activity" onchange="saveProfile()">
+            <label class="form-label" style="font-size:0.75rem;">Beruf / Alltag</label>
+            <select class="form-control" id="profile-job" onchange="saveProfile()">
               <option value="">–</option>
-              <option value="1.2">Sitzend, kaum Sport</option>
-              <option value="1.375">Leicht aktiv (1–3× Training)</option>
-              <option value="1.55">Aktiv (3–5× Training)</option>
-              <option value="1.725">Sehr aktiv (6–7× Training)</option>
-              <option value="1.9">Extrem aktiv / körperl. Arbeit</option>
+              <option value="sitzend">Sitzend (Büro, Schule)</option>
+              <option value="stehend">Stehend / gehend</option>
+              <option value="koerperlich">Körperlich aktiv</option>
+              <option value="schwer">Schwere körperl. Arbeit</option>
             </select>
           </div>
         </div>
+        <div style="margin-top:10px;">
+          <label class="form-label" style="font-size:0.75rem;">Weiterer Sport außerhalb der App (min/Woche, optional)</label>
+          <input type="number" class="form-control" id="profile-extra-sport" min="0" max="2000" step="15" placeholder="z.B. 90 (Fußball, Radfahren …)" onchange="saveProfile()">
+        </div>
+        <div id="training-time-info" style="font-size:0.75rem; color:var(--text-muted); margin-top:10px; display:none;"></div>
       </div>
 
     </main>
