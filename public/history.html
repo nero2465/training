@@ -50,6 +50,24 @@
       font-size: 0.75rem; color: var(--text-muted); text-align: center; margin-top: 8px;
     }
 
+    .cal-weight-dot {
+      position: absolute; top: 3px; right: 3px;
+      width: 5px; height: 5px; border-radius: 50%;
+      background: #fbbf24;
+    }
+
+    /* ── Weight entries in the timeline ──────────────── */
+    .weight-entry-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 14px; margin-bottom: 8px;
+      background: var(--bg-elevated);
+      border: 1px dashed var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 0.88rem; cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .weight-entry-row:active { background: var(--bg-card); }
+
     /* ── Set editing in detail view ──────────────────── */
     .set-edit-input {
       width: 54px; padding: 3px 4px; text-align: center;

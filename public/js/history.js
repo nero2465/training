@@ -5,12 +5,17 @@
 let expandedWorkoutId = null;
 let calYear = new Date().getFullYear();
 let calMonth = new Date().getMonth(); // 0-based
+let allBodyMetrics = [];
 
 async function init() {
   document.getElementById('nav-placeholder').innerHTML = buildNav('history');
 
   const user = await requireAuth();
   if (!user) return;
+
+  try {
+    allBodyMetrics = await API.get('/api/body-metrics');
+  } catch (e) { /* body tracking optional */ }
 
   loadCalendar();
   await loadHistory();
@@ -58,6 +63,11 @@ async function loadCalendar() {
   const lead = (first.getDay() + 6) % 7; // Monday-first offset
   for (let i = 0; i < lead; i++) html += '<div class="cal-day empty"></div>';
 
+  // Days with a body-weight entry get a small marker dot
+  const weightDays = new Set(
+    allBodyMetrics.filter(m => m.weight).map(m => String(m.measured_at).slice(0, 10))
+  );
+
   for (let d = 1; d <= last.getDate(); d++) {
     const iso = `${calYear}-${pad(calMonth + 1)}-${pad(d)}`;
     const info = byDate[iso];
@@ -70,6 +80,9 @@ async function loadCalendar() {
       if (info.workouts.every(w => w.is_deload)) classes.push('deload-day');
       inner += `<div class="cal-day-vol">${volCompact(info.volume)}</div>`;
       click = ` onclick="openWorkoutFromCalendar(${info.workouts[0].id})"`;
+    }
+    if (weightDays.has(iso)) {
+      inner += '<div class="cal-weight-dot" title="Gewicht erfasst"></div>';
     }
     html += `<div class="${classes.join(' ')}"${click}>${inner}</div>`;
   }
@@ -103,7 +116,15 @@ async function loadHistory() {
   try {
     const workouts = await API.get('/api/workouts');
 
-    if (workouts.length === 0) {
+    // Weight entries woven into the timeline, with delta vs previous entry
+    const weightEntries = allBodyMetrics
+      .filter(m => m.weight)
+      .map((m, i, arr) => ({
+        ...m,
+        delta: i > 0 ? Math.round((m.weight - arr[i - 1].weight) * 10) / 10 : null
+      }));
+
+    if (workouts.length === 0 && weightEntries.length === 0) {
       container.innerHTML = '';
       emptyEl.classList.remove('hidden');
       return;
@@ -112,17 +133,23 @@ async function loadHistory() {
     emptyEl.classList.add('hidden');
     container.innerHTML = '';
 
-    // Group by month
-    const grouped = groupByMonth(workouts);
+    // Merge workouts + weight entries into one chronological stream (newest first)
+    const items = [
+      ...workouts.map(w => ({ type: 'workout', date: w.started_at, data: w })),
+      ...weightEntries.map(m => ({ type: 'weight', date: m.measured_at, data: m }))
+    ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    for (const [monthKey, monthWorkouts] of Object.entries(grouped)) {
+    const grouped = groupByMonth(items);
+
+    for (const [monthKey, monthItems] of Object.entries(grouped)) {
       const monthSection = document.createElement('div');
       monthSection.innerHTML = `<div class="section-title">${monthKey}</div>`;
       container.appendChild(monthSection);
 
-      for (const workout of monthWorkouts) {
-        const el = createWorkoutCard(workout);
-        container.appendChild(el);
+      for (const item of monthItems) {
+        container.appendChild(
+          item.type === 'workout' ? createWorkoutCard(item.data) : createWeightRow(item.data)
+        );
       }
     }
 
@@ -131,13 +158,32 @@ async function loadHistory() {
   }
 }
 
-function groupByMonth(workouts) {
+function createWeightRow(m) {
+  const div = document.createElement('div');
+  div.className = 'weight-entry-row';
+  const dateStr = new Date(m.measured_at).toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' });
+  let deltaHtml = '';
+  if (m.delta !== null && m.delta !== 0) {
+    const up = m.delta > 0;
+    deltaHtml = `<span style="color:${up ? '#fbbf24' : 'var(--success, #4ade80)'}; font-size:0.75rem;">${up ? '▲ +' : '▼ '}${m.delta} kg</span>`;
+  }
+  div.innerHTML = `
+    <span>⚖️</span>
+    <strong>${m.weight} kg</strong>
+    ${deltaHtml}
+    <span style="margin-left:auto; color:var(--text-muted); font-size:0.75rem;">${dateStr}</span>
+  `;
+  div.onclick = () => window.location.href = '/body.html';
+  return div;
+}
+
+function groupByMonth(items) {
   const groups = {};
-  for (const w of workouts) {
-    const d = new Date(w.started_at);
+  for (const it of items) {
+    const d = new Date(it.date);
     const key = d.toLocaleDateString('de-DE', { year: 'numeric', month: 'long' });
     if (!groups[key]) groups[key] = [];
-    groups[key].push(w);
+    groups[key].push(it);
   }
   return groups;
 }

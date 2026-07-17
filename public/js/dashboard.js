@@ -38,6 +38,46 @@ async function init() {
   // Deload status + exercise rotation hints (non-blocking)
   loadDeloadStatus();
   loadRotationHints();
+  loadWeightReminder();
+}
+
+// ── Weekly weigh-in reminder ──────────────────────────────
+
+async function loadWeightReminder() {
+  const card = document.getElementById('weight-reminder-card');
+  if (!card) return;
+
+  // Snoozed within the last 3 days? Stay quiet.
+  const snoozedAt = parseInt(localStorage.getItem('weightReminderSnooze') || '0');
+  if (Date.now() - snoozedAt < 3 * 86400000) return;
+
+  try {
+    const metrics = await API.get('/api/body-metrics');
+    const weights = metrics.filter(m => m.weight);
+    if (weights.length === 0) return; // user doesn't track weight — don't nag
+
+    const last = new Date(weights[weights.length - 1].measured_at);
+    const days = Math.floor((Date.now() - last) / 86400000);
+    if (days < 7) return;
+
+    card.innerHTML = `
+      <div style="display:flex; align-items:center; gap:12px;">
+        <div style="font-size:1.8rem;">⚖️</div>
+        <div style="flex:1; cursor:pointer;" onclick="window.location.href='/body.html'">
+          <div style="font-weight:700;">Zeit fürs Wiegen</div>
+          <div style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">
+            Letzter Gewichtseintrag vor ${days} Tagen — kurz aktualisieren?
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="snoozeWeightReminder()" title="3 Tage ausblenden" style="color:var(--text-muted);">×</button>
+      </div>`;
+    card.classList.remove('hidden');
+  } catch (e) { /* optional feature */ }
+}
+
+function snoozeWeightReminder() {
+  localStorage.setItem('weightReminderSnooze', String(Date.now()));
+  document.getElementById('weight-reminder-card').classList.add('hidden');
 }
 
 // ── Deload ────────────────────────────────────────────────
