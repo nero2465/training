@@ -2,7 +2,7 @@
    Common Utilities - Shared across all pages
    ============================================================ */
 
-const APP_VERSION = '3.3';
+const APP_VERSION = '3.4';
 
 // API helper
 const API = {
@@ -237,31 +237,86 @@ function showConfirm(message) {
    Plate Calculator — shared by training, settings and 1RM mode
    ============================================================ */
 
-// Default: typical home-gym set. plates = count PER SIDE.
+// Bar slots: two straight bars (e.g. 20 kg + a lighter 10 kg), EZ/SZ bar and
+// adjustable dumbbells. Plates are one shared pool (counts PER SIDE).
+const BAR_TYPES = [
+  { id: 'lh1', label: 'Langhantel',    em: '🏋️', def: 20, hint: '' },
+  { id: 'lh2', label: '2. Langhantel', em: '🏋️', def: 10, hint: 'z.B. leichtere 10-kg-Stange' },
+  { id: 'sz',  label: 'SZ-Stange',     em: '➰',  def: 8,  hint: 'meist leichter als eine LH' },
+  { id: 'kh',  label: 'Kurzhantel',    em: '💪', def: 2,  hint: 'Gewicht pro Hantelstange' }
+];
+
 const DEFAULT_PLATE_INVENTORY = {
-  bar: 20,
-  plates: { '25': 0, '20': 2, '15': 0, '10': 2, '5': 2, '2.5': 2, '1.25': 2 }
+  plates: { '25': 0, '20': 2, '15': 0, '10': 2, '5': 2, '2.5': 2, '1.25': 2 },
+  bars: {
+    lh1: { weight: 20, enabled: true },
+    lh2: { weight: 10, enabled: false },
+    sz:  { weight: 8,  enabled: false },
+    kh:  { weight: 2,  enabled: false }
+  }
 };
 
 function parsePlateInventory(raw) {
   if (!raw) return null;
   try {
     const inv = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    if (typeof inv.bar !== 'number' || typeof inv.plates !== 'object') return null;
+    if (!inv || typeof inv.plates !== 'object') return null;
+    // Migrate legacy single-bar format ({bar: 20}) to the bars structure
+    if (!inv.bars || typeof inv.bars !== 'object') {
+      const legacy = typeof inv.bar === 'number' ? inv.bar : 20;
+      inv.bars = JSON.parse(JSON.stringify(DEFAULT_PLATE_INVENTORY.bars));
+      inv.bars.lh1 = { weight: legacy, enabled: true };
+    }
+    for (const bt of BAR_TYPES) {
+      if (!inv.bars[bt.id]) inv.bars[bt.id] = { weight: bt.def, enabled: false };
+    }
     return inv;
   } catch (e) {
     return null;
   }
 }
 
-// Greedy loadout: which plates per side for a target weight.
-// Returns { achievable, actual, perSide: [plate,...], diff } — `actual` is the
-// closest weight ≤ target that the inventory can build (or bar weight).
-function computePlateLoadout(target, inv) {
-  if (!inv || target < inv.bar) {
-    return { achievable: false, actual: inv ? inv.bar : 0, perSide: [], diff: inv ? target - inv.bar : 0 };
+function primaryBarWeight(inv) {
+  return inv?.bars?.lh1?.weight ?? inv?.bar ?? 20;
+}
+
+// Choose the right bar for an exercise from its equipment text.
+// Returns { id, weight, label, em, perDumbbell } or null (bar disabled /
+// no inventory → caller hides the hint).
+function pickBarForEquipment(inv, equipment, targetWeight) {
+  if (!inv || !inv.bars) return null;
+  const eq = (equipment || '').toLowerCase();
+  let id = 'lh1'; // Langhantel is also the default when equipment is unknown
+  if (eq.includes('sz')) id = 'sz';
+  else if (eq.includes('kurzhantel')) id = 'kh';
+
+  let bar = inv.bars[id];
+
+  // Straight-bar work: fall back to the lighter second bar when the target
+  // weight is below the main bar (or the main bar is disabled).
+  if (id === 'lh1') {
+    const lh2 = inv.bars.lh2;
+    const useSecond = lh2 && lh2.enabled && (
+      (!bar || !bar.enabled) ||
+      (targetWeight !== undefined && targetWeight < bar.weight && targetWeight >= lh2.weight)
+    );
+    if (useSecond) { bar = lh2; id = 'lh2'; }
   }
-  let remainingPerSide = (target - inv.bar) / 2;
+
+  if (!bar || !bar.enabled) return null;
+  const bt = BAR_TYPES.find(b => b.id === id) || BAR_TYPES[0];
+  return { id, weight: bar.weight, label: bt.label, em: bt.em, perDumbbell: id === 'kh' };
+}
+
+// Greedy loadout: which plates per side for a target weight on a given bar.
+// Returns { achievable, actual, perSide: [plate,...], bar, diff } — `actual`
+// is the closest weight ≤ target the inventory can build (or bar weight).
+function computePlateLoadout(target, inv, barWeight) {
+  const bw = barWeight !== undefined ? barWeight : primaryBarWeight(inv);
+  if (!inv || target < bw) {
+    return { achievable: false, actual: bw || 0, perSide: [], bar: bw || 0, diff: inv ? target - bw : 0 };
+  }
+  let remainingPerSide = (target - bw) / 2;
   const sizes = Object.keys(inv.plates).map(Number).filter(s => inv.plates[s] > 0).sort((a, b) => b - a);
   const perSide = [];
   for (const size of sizes) {
@@ -272,18 +327,19 @@ function computePlateLoadout(target, inv) {
       count--;
     }
   }
-  const actual = inv.bar + (perSide.reduce((a, b) => a + b, 0) * 2);
+  const actual = bw + (perSide.reduce((a, b) => a + b, 0) * 2);
   return {
     achievable: Math.abs(actual - target) < 1e-9,
     actual,
     perSide,
+    bar: bw,
     diff: target - actual
   };
 }
 
 function formatPlateLoadout(loadout, inv) {
-  if (!loadout || !inv) return '';
-  if (loadout.perSide.length === 0) return `nur Stange (${inv.bar} kg)`;
+  if (!loadout) return '';
+  if (loadout.perSide.length === 0) return `nur Stange (${loadout.bar} kg)`;
   const counts = {};
   loadout.perSide.forEach(p => { counts[p] = (counts[p] || 0) + 1; });
   return Object.keys(counts).map(Number).sort((a, b) => b - a)

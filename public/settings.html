@@ -215,13 +215,9 @@
         </div>
 
         <div id="plates-editor" style="display:none;">
-          <div class="setting-row" style="padding-top:4px;">
-            <div class="setting-info"><div class="setting-title" style="font-size:0.88rem;">Stange</div></div>
-            <div style="display:flex; align-items:center; gap:6px;">
-              <input type="number" class="form-control" id="plate-bar" value="20" min="5" max="30" step="2.5"
-                style="width:70px; text-align:center;" onchange="savePlates()"> kg
-            </div>
-          </div>
+          <div style="font-size:0.72rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; padding:8px 0 2px;">Stangen</div>
+          <div id="bar-rows"></div>
+          <div style="font-size:0.72rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; padding:12px 0 2px;">Scheiben (Anzahl pro Seite)</div>
           <div id="plate-rows"></div>
           <div class="info-box" id="plate-preview" style="margin-top:8px;"></div>
         </div>
