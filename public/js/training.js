@@ -459,12 +459,17 @@ function updatePlateHint() {
     return;
   }
 
-  if (!plateInventory || currentWeight < plateInventory.bar) {
+  // Bar chosen automatically from the exercise's equipment (LH/SZ/KH);
+  // a lighter second straight bar kicks in for weights below the main bar.
+  const exNow = exercises[currentExerciseIndex];
+  const bar = pickBarForEquipment(plateInventory, exNow?.equipment, currentWeight);
+  if (!bar || currentWeight < bar.weight) {
     el.style.display = 'none';
     return;
   }
-  const loadout = computePlateLoadout(currentWeight, plateInventory);
-  let text = `🏋️ Pro Seite: <strong style="color:var(--text-primary);">${formatPlateLoadout(loadout, plateInventory)}</strong>`;
+  const loadout = computePlateLoadout(currentWeight, plateInventory, bar.weight);
+  const perLabel = bar.perDumbbell ? 'Pro Hantel-Seite' : 'Pro Seite';
+  let text = `${bar.em} ${bar.label} (${bar.weight} kg) · ${perLabel}: <strong style="color:var(--text-primary);">${formatPlateLoadout(loadout, plateInventory)}</strong>`;
   if (!loadout.achievable) {
     text += ` <span style="color:#fbbf24;">(${currentWeight} kg nicht exakt ladbar → ${loadout.actual} kg)</span>`;
   }
@@ -474,8 +479,10 @@ function updatePlateHint() {
 
 /* ── Warmup ramp (display only, never logged) ─────────────── */
 
-function buildWarmupRamp(workWeight) {
-  const bar = plateInventory ? plateInventory.bar : 20;
+function buildWarmupRamp(workWeight, ex) {
+  const picked = pickBarForEquipment(plateInventory, ex?.equipment, workWeight);
+  if (picked && picked.perDumbbell) return []; // no barbell ramp for dumbbell work
+  const bar = picked ? picked.weight : 20;
   if (!workWeight || workWeight < bar * 1.5) return []; // too light, no ramp needed
   const steps = [
     { pct: 0,    reps: 10, label: 'Leere Stange' },
@@ -488,7 +495,7 @@ function buildWarmupRamp(workWeight) {
   for (const s of steps) {
     const w = s.pct === 0 ? bar : Math.round(workWeight * s.pct / 2.5) * 2.5;
     if (w < bar || w <= prev || w >= workWeight) continue;
-    ramp.push({ weight: w, reps: s.reps, label: s.label });
+    ramp.push({ weight: w, reps: s.reps, label: s.label, barWeight: bar });
     prev = w;
   }
   return ramp;
@@ -503,7 +510,7 @@ function updateWarmupArea(ex) {
   // Only before the first set of an exercise, and only when a ramp makes sense
   const done = (loggedSets[ex.id]?.length || 0) + (skippedSets[ex.id]?.size || 0);
   const workWeight = setPlans[ex.id]?.[0]?.weight ?? currentWeight;
-  const ramp = buildWarmupRamp(workWeight);
+  const ramp = buildWarmupRamp(workWeight, ex);
 
   if (done > 0 || ramp.length === 0 || currentBodyweight) {
     area.style.display = 'none';
@@ -515,8 +522,8 @@ function updateWarmupArea(ex) {
   btn.textContent = '🔥 Aufwärmsätze anzeigen';
   list.innerHTML = ramp.map(r => {
     let plates = '';
-    if (plateInventory && r.weight >= plateInventory.bar) {
-      const lo = computePlateLoadout(r.weight, plateInventory);
+    if (plateInventory && r.weight >= r.barWeight) {
+      const lo = computePlateLoadout(r.weight, plateInventory, r.barWeight);
       plates = ` <span style="color:var(--text-muted); font-size:0.85em;">(${formatPlateLoadout(lo, plateInventory)})</span>`;
     }
     return `• ${r.label ? r.label + ' — ' : ''}<strong>${formatWeight(r.weight)}</strong> × ${r.reps}${plates}`;

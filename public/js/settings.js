@@ -40,7 +40,26 @@ function renderPlateEditor() {
     return;
   }
   editor.style.display = 'block';
-  document.getElementById('plate-bar').value = plateInv.bar;
+
+  // Bar slots: toggle + weight per bar type
+  document.getElementById('bar-rows').innerHTML = BAR_TYPES.map(bt => {
+    const bar = plateInv.bars[bt.id];
+    return `
+      <div class="setting-row" style="padding:8px 0;">
+        <div class="setting-info" style="display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" ${bar.enabled ? 'checked' : ''} style="accent-color:var(--accent); cursor:pointer;"
+            onchange="toggleBar('${bt.id}', this.checked)">
+          <div>
+            <div class="setting-title" style="font-size:0.88rem;">${bt.em} ${bt.label}</div>
+            ${bt.hint ? `<div style="font-size:0.7rem; color:var(--text-muted);">${bt.hint}</div>` : ''}
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px; ${bar.enabled ? '' : 'opacity:0.35;'}">
+          <input type="number" class="form-control" id="bar-weight-${bt.id}" value="${bar.weight}" min="1" max="30" step="0.5"
+            style="width:64px; text-align:center;" onchange="setBarWeight('${bt.id}', this.value)" ${bar.enabled ? '' : 'disabled'}> kg
+        </div>
+      </div>`;
+  }).join('');
 
   document.getElementById('plate-rows').innerHTML = PLATE_SIZES.map(size => {
     const count = plateInv.plates[String(size)] || 0;
@@ -64,6 +83,21 @@ function togglePlates(enabled) {
   savePlates(true);
 }
 
+function toggleBar(barId, enabled) {
+  if (!plateInv) return;
+  plateInv.bars[barId].enabled = enabled;
+  renderPlateEditor();
+  savePlates();
+}
+
+function setBarWeight(barId, value) {
+  if (!plateInv) return;
+  const w = parseFloat(value);
+  if (!isNaN(w) && w >= 1 && w <= 30) plateInv.bars[barId].weight = w;
+  updatePlatePreview();
+  savePlates();
+}
+
 function adjustPlate(size, delta) {
   if (!plateInv) return;
   const cur = plateInv.plates[size] || 0;
@@ -78,19 +112,23 @@ function updatePlatePreview() {
   if (!plateInv || !box) return;
   const maxPerSide = Object.keys(plateInv.plates)
     .reduce((sum, s) => sum + Number(s) * (plateInv.plates[s] || 0), 0);
-  const maxTotal = plateInv.bar + maxPerSide * 2;
-  const example = computePlateLoadout(Math.min(100, maxTotal), plateInv);
-  box.innerHTML = `Maximal ladbar: <strong>${maxTotal} kg</strong><br>` +
-    `Beispiel ${example.actual} kg → pro Seite: <strong>${formatPlateLoadout(example, plateInv)}</strong>`;
+
+  const lines = BAR_TYPES
+    .filter(bt => plateInv.bars[bt.id].enabled)
+    .map(bt => {
+      const w = plateInv.bars[bt.id].weight;
+      return `${bt.em} ${bt.label} (${w} kg): max. <strong>${w + maxPerSide * 2} kg</strong>`;
+    });
+
+  const example = computePlateLoadout(Math.min(100, primaryBarWeight(plateInv) + maxPerSide * 2), plateInv);
+  box.innerHTML = (lines.length ? lines.join('<br>') + '<br>' : '') +
+    `Beispiel ${example.actual} kg (Langhantel) → pro Seite: <strong>${formatPlateLoadout(example, plateInv)}</strong><br>` +
+    `<span style="opacity:0.75;">Die App wählt die Stange automatisch passend zum Equipment der Übung.</span>`;
 }
 
 let plateSaveTimer = null;
 function savePlates(immediate) {
-  if (plateInv) {
-    const bar = parseFloat(document.getElementById('plate-bar').value);
-    if (!isNaN(bar) && bar >= 5 && bar <= 30) plateInv.bar = bar;
-    updatePlatePreview();
-  }
+  if (plateInv) updatePlatePreview();
   clearTimeout(plateSaveTimer);
   plateSaveTimer = setTimeout(async () => {
     try {

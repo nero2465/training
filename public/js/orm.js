@@ -8,6 +8,7 @@ let ormAttempt = 0;
 let ormBest = 0;
 let ormExerciseId = null;
 let plateInv = null;
+let ormBar = null; // bar picked from the exercise's equipment
 
 async function init() {
   const user = await requireAuth();
@@ -79,6 +80,7 @@ function startOrm() {
   ormBest = 0;
 
   const ex = ormExercises.find(e => e.id === ormExerciseId);
+  ormBar = pickBarForEquipment(plateInv, ex?.equipment, ormTarget);
   document.getElementById('orm-flow-exercise').textContent = ex ? ex.name : '';
   document.getElementById('orm-flow-target').textContent = formatWeight(ormTarget);
 
@@ -91,7 +93,7 @@ function startOrm() {
 
 // Warmup ramp toward a max attempt: more steps, fewer reps than a normal warmup
 function buildOrmRamp(target) {
-  const bar = plateInv ? plateInv.bar : 20;
+  const bar = ormBar ? ormBar.weight : 20;
   const steps = [
     { pct: 0,     reps: 10, label: 'Leere Stange' },
     { pct: 0.4,   reps: 5 },
@@ -115,8 +117,9 @@ function renderRamp() {
   const ramp = buildOrmRamp(ormTarget);
   document.getElementById('orm-ramp').innerHTML = ramp.map((r, i) => {
     let plates = '';
-    if (plateInv && r.weight >= plateInv.bar) {
-      const lo = computePlateLoadout(r.weight, plateInv);
+    const barW = ormBar ? ormBar.weight : 20;
+    if (plateInv && r.weight >= barW) {
+      const lo = computePlateLoadout(r.weight, plateInv, barW);
       plates = `<div class="ramp-plates">Pro Seite: ${formatPlateLoadout(lo, plateInv)}</div>`;
     }
     return `
@@ -145,8 +148,9 @@ function toggleRampStep(i, total) {
 function updateAttemptDisplay() {
   document.getElementById('orm-attempt-weight').textContent = formatWeight(ormAttempt);
   const platesEl = document.getElementById('orm-attempt-plates');
-  if (plateInv && ormAttempt >= plateInv.bar) {
-    const lo = computePlateLoadout(ormAttempt, plateInv);
+  const attemptBarW = ormBar ? ormBar.weight : 20;
+  if (plateInv && ormAttempt >= attemptBarW) {
+    const lo = computePlateLoadout(ormAttempt, plateInv, attemptBarW);
     platesEl.textContent = `Pro Seite: ${formatPlateLoadout(lo, plateInv)}`;
   } else {
     platesEl.textContent = '';

@@ -36,12 +36,19 @@ router.put('/settings', requireAuth, (req, res) => {
 
   const clamp = (v, min, max) => Math.min(max, Math.max(min, parseInt(v)));
 
-  // plate_inventory arrives as an object; store as JSON text after sanity check
+  // plate_inventory arrives as an object; store as JSON text after sanity check.
+  // Accepts the multi-bar format ({plates, bars}) and the legacy single-bar
+  // format ({plates, bar}) for backward compatibility.
   let plateJson = settings.plate_inventory ?? null;
   if (plate_inventory !== undefined) {
     if (plate_inventory === null) {
       plateJson = null;
-    } else if (typeof plate_inventory === 'object' && typeof plate_inventory.bar === 'number' && typeof plate_inventory.plates === 'object') {
+    } else if (
+      typeof plate_inventory === 'object' &&
+      typeof plate_inventory.plates === 'object' &&
+      (typeof plate_inventory.bar === 'number' ||
+       (typeof plate_inventory.bars === 'object' && plate_inventory.bars !== null))
+    ) {
       plateJson = JSON.stringify(plate_inventory);
     } else {
       return res.status(400).json({ error: 'Ungültiges Scheiben-Inventar' });
