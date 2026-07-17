@@ -35,7 +35,12 @@ async function pickMuscle(muscle) {
   try {
     const data = await API.get(`/api/special/suggest/${encodeURIComponent(muscle)}`);
     spSelected = data.suggested;
-    spOthers = data.others;
+    // One pool for unselected exercises; supporting ones carry a flag so they
+    // render in their own clearly-labeled section
+    spOthers = [
+      ...data.others.map(e => ({ ...e, _supporting: false })),
+      ...(data.supporting || []).map(e => ({ ...e, _supporting: true }))
+    ];
 
     document.getElementById('sp-selected-muscle').textContent = `🎯 ${muscle}`;
     renderSelection();
@@ -66,23 +71,37 @@ function toggleSpecialExercise(id) {
 function renderSelection() {
   document.getElementById('sp-count').textContent = spSelected.length;
 
-  const row = (ex, checked) => `
+  const row = (ex, checked) => {
+    // For supporting exercises, show WHY they match (the muscle only assists)
+    const muscleLine = ex._supporting
+      ? `${escapeHtml(ex.muscle_groups || '')} · <span style="color:var(--accent);">🤝 ${escapeHtml(spMuscle)} nur unterstützend</span>`
+      : escapeHtml(ex.muscle_groups || '');
+    return `
     <div class="sp-ex-row${checked ? ' selected' : ''}">
       <input type="checkbox" ${checked ? 'checked' : ''} style="flex-shrink:0; cursor:pointer; accent-color:var(--accent);"
         onchange="toggleSpecialExercise(${ex.id})">
       <div style="flex:1;">
         <div class="sp-ex-name">${escapeHtml(ex.name)}</div>
-        <div class="sp-ex-muscles">${escapeHtml(ex.muscle_groups || '')}</div>
+        <div class="sp-ex-muscles">${muscleLine}</div>
       </div>
     </div>`;
+  };
 
   document.getElementById('sp-selected-list').innerHTML = spSelected.length
     ? spSelected.map(ex => row(ex, true)).join('')
     : '<div style="color:var(--text-muted); font-size:0.82rem; padding:4px 0;">Keine Übungen ausgewählt</div>';
 
-  document.getElementById('sp-other-list').innerHTML = spOthers.length
-    ? spOthers.map(ex => row(ex, false)).join('')
-    : '<div style="color:var(--text-muted); font-size:0.82rem; padding:4px 0;">Keine weiteren Übungen</div>';
+  const targets = spOthers.filter(e => !e._supporting);
+  const supporting = spOthers.filter(e => e._supporting);
+
+  document.getElementById('sp-other-list').innerHTML =
+    (targets.length
+      ? targets.map(ex => row(ex, false)).join('')
+      : '<div style="color:var(--text-muted); font-size:0.82rem; padding:4px 0;">Keine weiteren Zielübungen</div>') +
+    (supporting.length
+      ? `<div class="sp-section-title">Nur unterstützend beteiligt <span style="text-transform:none; letter-spacing:0;">(z.B. Haltearbeit — kein Ersatz für gezieltes Training)</span></div>` +
+        supporting.map(ex => row(ex, false)).join('')
+      : '');
 
   const btn = document.getElementById('sp-start-btn');
   btn.disabled = spSelected.length === 0;
