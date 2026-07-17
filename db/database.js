@@ -157,6 +157,9 @@ function runMigrations() {
     'ALTER TABLE exercises ADD COLUMN bw_factor REAL',
     // Paket 3: versteckter System-Plan für Sondertrainings
     'ALTER TABLE training_plans ADD COLUMN is_system INTEGER DEFAULT 0',
+    // Aktivität getrennt: Beruf/Alltag + Sport (auto aus Logs + manueller Zusatz)
+    'ALTER TABLE user_settings ADD COLUMN job_activity TEXT',
+    'ALTER TABLE user_settings ADD COLUMN extra_sport_min INTEGER',
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch(e) { /* column already exists */ }
