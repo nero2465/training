@@ -104,6 +104,17 @@ function createTables() {
       measured_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS cardio_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      activity TEXT NOT NULL,
+      duration_min REAL NOT NULL,
+      distance_km REAL,
+      note TEXT,
+      performed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
   `);
 }
 
@@ -144,6 +155,8 @@ function runMigrations() {
     'ALTER TABLE user_settings ADD COLUMN activity_level REAL',
     'ALTER TABLE user_settings ADD COLUMN goal TEXT',
     'ALTER TABLE exercises ADD COLUMN bw_factor REAL',
+    // Paket 3: versteckter System-Plan für Sondertrainings
+    'ALTER TABLE training_plans ADD COLUMN is_system INTEGER DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch(e) { /* column already exists */ }

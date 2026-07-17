@@ -320,16 +320,42 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
     LIMIT 1
   `).get(req.params.session_exercise_id, req.session.userId, se.exercise_id, se.exercise_id);
 
-  if (!lastWorkout) {
-    return res.json({ recommended_weight: 0, last_sets: [], scheme, deload: deload.active });
-  }
+  let lastSets = [];
+  if (lastWorkout) {
+    lastSets = db.prepare(`
+      SELECT weight, reps, set_number, rating, is_bodyweight
+      FROM workout_sets
+      WHERE workout_id = ? AND session_exercise_id = ? AND (skipped IS NULL OR skipped = 0)
+      ORDER BY set_number ASC
+    `).all(lastWorkout.id, req.params.session_exercise_id);
+  } else {
+    // Fresh slot (e.g. ad-hoc special workout or newly added plan exercise):
+    // fall back to the most recent history of the SAME exercise in any slot.
+    const fallback = db.prepare(`
+      SELECT w.id
+      FROM workouts w
+      JOIN workout_sets ws ON ws.workout_id = w.id
+      JOIN session_exercises se2 ON se2.id = ws.session_exercise_id
+      WHERE w.user_id = ?
+        AND w.ended_at IS NOT NULL
+        AND (w.is_deload IS NULL OR w.is_deload = 0)
+        AND COALESCE(ws.exercise_id_snapshot, se2.exercise_id) = ?
+      ORDER BY w.started_at DESC
+      LIMIT 1
+    `).get(req.session.userId, se.exercise_id);
 
-  const lastSets = db.prepare(`
-    SELECT weight, reps, set_number, rating, is_bodyweight
-    FROM workout_sets
-    WHERE workout_id = ? AND session_exercise_id = ? AND (skipped IS NULL OR skipped = 0)
-    ORDER BY set_number ASC
-  `).all(lastWorkout.id, req.params.session_exercise_id);
+    if (fallback) {
+      lastSets = db.prepare(`
+        SELECT ws.weight, ws.reps, ws.set_number, ws.rating, ws.is_bodyweight
+        FROM workout_sets ws
+        JOIN session_exercises se2 ON se2.id = ws.session_exercise_id
+        WHERE ws.workout_id = ?
+          AND COALESCE(ws.exercise_id_snapshot, se2.exercise_id) = ?
+          AND (ws.skipped IS NULL OR ws.skipped = 0)
+        ORDER BY ws.set_number ASC
+      `).all(fallback.id, se.exercise_id);
+    }
+  }
 
   if (lastSets.length === 0) {
     return res.json({ recommended_weight: 0, last_sets: [], scheme, deload: deload.active });

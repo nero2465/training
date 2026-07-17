@@ -6,6 +6,7 @@ let expandedWorkoutId = null;
 let calYear = new Date().getFullYear();
 let calMonth = new Date().getMonth(); // 0-based
 let allBodyMetrics = [];
+let allCardio = [];
 
 async function init() {
   document.getElementById('nav-placeholder').innerHTML = buildNav('history');
@@ -16,6 +17,9 @@ async function init() {
   try {
     allBodyMetrics = await API.get('/api/body-metrics');
   } catch (e) { /* body tracking optional */ }
+  try {
+    allCardio = await API.get('/api/cardio');
+  } catch (e) { /* cardio optional */ }
 
   loadCalendar();
   await loadHistory();
@@ -67,6 +71,9 @@ async function loadCalendar() {
   const weightDays = new Set(
     allBodyMetrics.filter(m => m.weight).map(m => String(m.measured_at).slice(0, 10))
   );
+  const cardioDays = new Set(
+    allCardio.map(c => String(c.performed_at).slice(0, 10))
+  );
 
   for (let d = 1; d <= last.getDate(); d++) {
     const iso = `${calYear}-${pad(calMonth + 1)}-${pad(d)}`;
@@ -83,6 +90,9 @@ async function loadCalendar() {
     }
     if (weightDays.has(iso)) {
       inner += '<div class="cal-weight-dot" title="Gewicht erfasst"></div>';
+    }
+    if (cardioDays.has(iso)) {
+      inner += '<div class="cal-cardio-dot" title="Cardio"></div>';
     }
     html += `<div class="${classes.join(' ')}"${click}>${inner}</div>`;
   }
@@ -133,10 +143,11 @@ async function loadHistory() {
     emptyEl.classList.add('hidden');
     container.innerHTML = '';
 
-    // Merge workouts + weight entries into one chronological stream (newest first)
+    // Merge workouts + weight + cardio into one chronological stream (newest first)
     const items = [
       ...workouts.map(w => ({ type: 'workout', date: w.started_at, data: w })),
-      ...weightEntries.map(m => ({ type: 'weight', date: m.measured_at, data: m }))
+      ...weightEntries.map(m => ({ type: 'weight', date: m.measured_at, data: m })),
+      ...allCardio.map(c => ({ type: 'cardio', date: c.performed_at, data: c }))
     ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
     const grouped = groupByMonth(items);
@@ -147,9 +158,11 @@ async function loadHistory() {
       container.appendChild(monthSection);
 
       for (const item of monthItems) {
-        container.appendChild(
-          item.type === 'workout' ? createWorkoutCard(item.data) : createWeightRow(item.data)
-        );
+        let el;
+        if (item.type === 'workout') el = createWorkoutCard(item.data);
+        else if (item.type === 'weight') el = createWeightRow(item.data);
+        else el = createCardioRow(item.data);
+        container.appendChild(el);
       }
     }
 
@@ -174,6 +187,22 @@ function createWeightRow(m) {
     <span style="margin-left:auto; color:var(--text-muted); font-size:0.75rem;">${dateStr}</span>
   `;
   div.onclick = () => window.location.href = '/body.html';
+  return div;
+}
+
+function createCardioRow(c) {
+  const div = document.createElement('div');
+  div.className = 'weight-entry-row';
+  const dateStr = new Date(c.performed_at).toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' });
+  const parts = [`${Math.round(c.duration_min)} min`];
+  if (c.distance_km) parts.push(`${c.distance_km} km`);
+  div.innerHTML = `
+    <span>🏃</span>
+    <strong>${escapeHtml(c.activity)}</strong>
+    <span style="color:var(--text-muted); font-size:0.8rem;">${parts.join(' · ')}</span>
+    <span style="margin-left:auto; color:var(--text-muted); font-size:0.75rem;">${dateStr}</span>
+  `;
+  div.onclick = () => window.location.href = '/cardio.html';
   return div;
 }
 

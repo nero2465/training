@@ -11,11 +11,11 @@ function requireAuth(req, res, next) {
   next();
 }
 
-// GET /api/plans
+// GET /api/plans — hides the system plan that backs ad-hoc special workouts
 router.get('/plans', requireAuth, (req, res) => {
   const db = getDb();
   const plans = db.prepare(
-    'SELECT * FROM training_plans WHERE user_id = ? ORDER BY created_at DESC'
+    'SELECT * FROM training_plans WHERE user_id = ? AND (is_system IS NULL OR is_system = 0) ORDER BY created_at DESC'
   ).all(req.session.userId);
   res.json(plans);
 });
