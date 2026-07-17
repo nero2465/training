@@ -31,7 +31,8 @@ router.put('/settings', requireAuth, (req, res) => {
   const db = getDb();
   const settings = getOrCreateSettings(db, req.session.userId);
 
-  const { auto_progress, deload_enabled, deload_interval_weeks, deload_percent, plate_inventory } = req.body;
+  const { auto_progress, deload_enabled, deload_interval_weeks, deload_percent, plate_inventory,
+          height_cm, birth_year, sex, activity_level, goal } = req.body;
 
   const clamp = (v, min, max) => Math.min(max, Math.max(min, parseInt(v)));
 
@@ -47,9 +48,25 @@ router.put('/settings', requireAuth, (req, res) => {
     }
   }
 
+  // Body profile fields (all optional, null clears)
+  const optNum = (v, min, max, cur) => {
+    if (v === undefined) return cur ?? null;
+    if (v === null || v === '') return null;
+    const n = parseFloat(v);
+    return (isNaN(n) || n < min || n > max) ? (cur ?? null) : n;
+  };
+  const newHeight = optNum(height_cm, 100, 250, settings.height_cm);
+  const newBirthYear = optNum(birth_year, 1920, new Date().getFullYear() - 5, settings.birth_year);
+  const newActivity = optNum(activity_level, 1.2, 2.0, settings.activity_level);
+  const validSex = ['m', 'w'];
+  const newSex = sex !== undefined ? (validSex.includes(sex) ? sex : null) : (settings.sex ?? null);
+  const validGoals = ['cut', 'maintain', 'bulk'];
+  const newGoal = goal !== undefined ? (validGoals.includes(goal) ? goal : null) : (settings.goal ?? null);
+
   db.prepare(`
     UPDATE user_settings
-    SET auto_progress = ?, deload_enabled = ?, deload_interval_weeks = ?, deload_percent = ?, plate_inventory = ?
+    SET auto_progress = ?, deload_enabled = ?, deload_interval_weeks = ?, deload_percent = ?, plate_inventory = ?,
+        height_cm = ?, birth_year = ?, sex = ?, activity_level = ?, goal = ?
     WHERE user_id = ?
   `).run(
     auto_progress !== undefined ? (auto_progress ? 1 : 0) : settings.auto_progress,
@@ -57,6 +74,7 @@ router.put('/settings', requireAuth, (req, res) => {
     deload_interval_weeks !== undefined ? clamp(deload_interval_weeks, 3, 12) : (settings.deload_interval_weeks ?? 6),
     deload_percent !== undefined ? clamp(deload_percent, 40, 80) : (settings.deload_percent ?? 55),
     plateJson,
+    newHeight, newBirthYear, newSex, newActivity, newGoal,
     req.session.userId
   );
 
