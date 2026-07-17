@@ -2,7 +2,7 @@
    Common Utilities - Shared across all pages
    ============================================================ */
 
-const APP_VERSION = '3.4';
+const APP_VERSION = '3.5';
 
 // API helper
 const API = {
@@ -281,14 +281,18 @@ function primaryBarWeight(inv) {
 }
 
 // Choose the right bar for an exercise from its equipment text.
-// Returns { id, weight, label, em, perDumbbell } or null (bar disabled /
-// no inventory → caller hides the hint).
+// Returns { id, weight, label, em, perDumbbell, pair } or null — null means
+// "no plate hint" (machine/cable/kettlebell exercises, or bar disabled).
 function pickBarForEquipment(inv, equipment, targetWeight) {
   if (!inv || !inv.bars) return null;
   const eq = (equipment || '').toLowerCase();
-  let id = 'lh1'; // Langhantel is also the default when equipment is unknown
+
+  let id;
   if (eq.includes('sz')) id = 'sz';
   else if (eq.includes('kurzhantel')) id = 'kh';
+  else if (eq.includes('langhantel')) id = 'lh1';
+  else if (eq === '') id = 'lh1'; // no metadata → assume barbell (status quo)
+  else return null;               // machine, cable, kettlebell, bodyweight …
 
   let bar = inv.bars[id];
 
@@ -305,7 +309,56 @@ function pickBarForEquipment(inv, equipment, targetWeight) {
 
   if (!bar || !bar.enabled) return null;
   const bt = BAR_TYPES.find(b => b.id === id) || BAR_TYPES[0];
-  return { id, weight: bar.weight, label: bt.label, em: bt.em, perDumbbell: id === 'kh' };
+  return {
+    id,
+    weight: bar.weight,
+    label: bt.label,
+    em: bt.em,
+    perDumbbell: id === 'kh',
+    // "Kurzhanteln" (plural) = one dumbbell per hand → plates split across
+    // the pair; singular = one dumbbell held with both hands → full pool
+    pair: id === 'kh' && eq.includes('kurzhanteln')
+  };
+}
+
+// Dumbbell loadout WITHOUT the symmetry constraint: hands sit under the
+// plates, so top/bottom distribution is free (user insight — e.g. 2.5 kg
+// bar + 5×5 kg = 27.5 kg with 3 plates up, 2 down). Greedy over the total
+// plate pool: inventory counts are per-side (= pairs owned), so a single
+// dumbbell may use 2× each count; with a pair of dumbbells each gets 1×.
+function computeDumbbellLoadout(target, inv, barWeight, pairMode) {
+  const mult = pairMode ? 1 : 2;
+  if (!inv || target < barWeight) {
+    return { achievable: false, actual: barWeight || 0, plates: [], bar: barWeight || 0 };
+  }
+  let remaining = target - barWeight;
+  const sizes = Object.keys(inv.plates).map(Number).filter(s => inv.plates[s] > 0).sort((a, b) => b - a);
+  const plates = [];
+  for (const size of sizes) {
+    let count = inv.plates[String(size)] * mult;
+    while (count > 0 && remaining >= size - 1e-9) {
+      plates.push(size);
+      remaining -= size;
+      count--;
+    }
+  }
+  const actual = barWeight + plates.reduce((a, b) => a + b, 0);
+  return {
+    achievable: Math.abs(actual - target) < 1e-9,
+    actual,
+    plates,
+    bar: barWeight
+  };
+}
+
+function formatDumbbellLoadout(loadout) {
+  if (!loadout) return '';
+  if (loadout.plates.length === 0) return `nur Stange (${loadout.bar} kg)`;
+  const counts = {};
+  loadout.plates.forEach(p => { counts[p] = (counts[p] || 0) + 1; });
+  return Object.keys(counts).map(Number).sort((a, b) => b - a)
+    .map(size => counts[size] > 1 ? `${counts[size]}×${size}` : `${size}`)
+    .join(' + ');
 }
 
 // Greedy loadout: which plates per side for a target weight on a given bar.

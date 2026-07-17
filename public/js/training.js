@@ -467,11 +467,21 @@ function updatePlateHint() {
     el.style.display = 'none';
     return;
   }
-  const loadout = computePlateLoadout(currentWeight, plateInventory, bar.weight);
-  const perLabel = bar.perDumbbell ? 'Pro Hantel-Seite' : 'Pro Seite';
-  let text = `${bar.em} ${bar.label} (${bar.weight} kg) · ${perLabel}: <strong style="color:var(--text-primary);">${formatPlateLoadout(loadout, plateInventory)}</strong>`;
-  if (!loadout.achievable) {
-    text += ` <span style="color:#fbbf24;">(${currentWeight} kg nicht exakt ladbar → ${loadout.actual} kg)</span>`;
+  let text;
+  let achievable, actual;
+  if (bar.perDumbbell) {
+    // Dumbbells: free plate distribution (no symmetry), total per dumbbell
+    const lo = computeDumbbellLoadout(currentWeight, plateInventory, bar.weight, bar.pair);
+    achievable = lo.achievable; actual = lo.actual;
+    const suffix = bar.pair ? 'pro Hantel, frei verteilbar' : 'frei verteilbar';
+    text = `${bar.em} ${bar.label} (${bar.weight} kg) · Scheiben: <strong style="color:var(--text-primary);">${formatDumbbellLoadout(lo)}</strong> <span style="opacity:0.75;">(${suffix})</span>`;
+  } else {
+    const lo = computePlateLoadout(currentWeight, plateInventory, bar.weight);
+    achievable = lo.achievable; actual = lo.actual;
+    text = `${bar.em} ${bar.label} (${bar.weight} kg) · Pro Seite: <strong style="color:var(--text-primary);">${formatPlateLoadout(lo, plateInventory)}</strong>`;
+  }
+  if (!achievable) {
+    text += ` <span style="color:#fbbf24;">(${currentWeight} kg nicht exakt ladbar → ${actual} kg)</span>`;
   }
   el.innerHTML = text;
   el.style.display = 'block';
