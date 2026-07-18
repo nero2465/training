@@ -6,7 +6,6 @@ let deloadWeeks = 6;
 let deloadPercent = 55;
 let plateInv = null; // null = disabled
 
-const PLATE_SIZES = [25, 20, 15, 10, 5, 2.5, 1.25];
 
 async function init() {
   document.getElementById('nav-placeholder').innerHTML = buildNav(null);
@@ -61,20 +60,65 @@ function renderPlateEditor() {
       </div>`;
   }).join('');
 
-  document.getElementById('plate-rows').innerHTML = PLATE_SIZES.map(size => {
-    const count = plateInv.plates[String(size)] || 0;
+  // Plate sizes come from the inventory itself (freely add/remove any size),
+  // sorted heaviest first
+  const sizes = Object.keys(plateInv.plates).map(Number).sort((a, b) => b - a);
+
+  document.getElementById('plate-rows').innerHTML = sizes.map(size => {
+    const key = String(size);
+    const count = plateInv.plates[key] || 0;
+    const displaySize = String(size).replace('.', ',');
     return `
       <div class="setting-row" style="padding:8px 0;">
-        <div class="setting-info"><div class="setting-title" style="font-size:0.88rem;">${size} kg</div></div>
+        <div class="setting-info" style="display:flex; align-items:center; gap:6px;">
+          <button class="btn btn-ghost btn-sm" onclick="removePlateSize('${key}')" title="Größe entfernen"
+            style="padding:2px 8px; color:var(--text-muted); font-size:1rem;">×</button>
+          <div class="setting-title" style="font-size:0.88rem;">${displaySize} kg</div>
+        </div>
         <div style="display:flex; align-items:center; gap:0;">
-          <button class="btn btn-secondary" style="width:32px;height:32px;padding:0;" onclick="adjustPlate('${size}',-1)">−</button>
-          <span style="min-width:44px;text-align:center;font-weight:700;" id="plate-count-${String(size).replace('.','_')}">${count}</span>
-          <button class="btn btn-secondary" style="width:32px;height:32px;padding:0;" onclick="adjustPlate('${size}',1)">+</button>
+          <button class="btn btn-secondary" style="width:32px;height:32px;padding:0;" onclick="adjustPlate('${key}',-1)">−</button>
+          <span style="min-width:44px;text-align:center;font-weight:700;" id="plate-count-${key.replace('.','_')}">${count}</span>
+          <button class="btn btn-secondary" style="width:32px;height:32px;padding:0;" onclick="adjustPlate('${key}',1)">+</button>
         </div>
       </div>`;
-  }).join('');
+  }).join('') + `
+    <div class="setting-row" style="padding:10px 0 4px;">
+      <div class="setting-info" style="display:flex; align-items:center; gap:8px;">
+        <input type="number" class="form-control" id="new-plate-size" placeholder="z.B. 1,5" min="0.25" max="50" step="0.25"
+          style="width:90px; text-align:center;" onkeydown="if(event.key==='Enter')addPlateSize()">
+        <span class="text-muted" style="font-size:0.85rem;">kg</span>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="addPlateSize()">+ Scheibe hinzufügen</button>
+    </div>`;
 
   updatePlatePreview();
+}
+
+function addPlateSize() {
+  if (!plateInv) return;
+  const input = document.getElementById('new-plate-size');
+  // Accept German comma input ("1,5")
+  const size = parseFloat(String(input.value).replace(',', '.'));
+  if (isNaN(size) || size < 0.25 || size > 50) {
+    showToast('Bitte eine Größe zwischen 0,25 und 50 kg eingeben', 'error');
+    return;
+  }
+  const key = String(size);
+  if (plateInv.plates[key] !== undefined) {
+    showToast(`${key.replace('.', ',')} kg gibt es schon — nutze +/− bei der Zeile`, 'info');
+    return;
+  }
+  plateInv.plates[key] = 1; // one pair = 1 per side
+  renderPlateEditor();
+  savePlates();
+  showToast(`${key.replace('.', ',')} kg hinzugefügt`, 'success');
+}
+
+function removePlateSize(key) {
+  if (!plateInv) return;
+  delete plateInv.plates[key];
+  renderPlateEditor();
+  savePlates();
 }
 
 function togglePlates(enabled) {
