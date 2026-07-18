@@ -110,7 +110,7 @@ async function loadDeloadStatus() {
           <div style="flex:1;">
             <div style="font-weight:700;">Deload fällig</div>
             <div style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">
-              Woche ${st.week_in_cycle} im Zyklus (Intervall: ${st.interval_weeks} Wochen) — Zeit für eine Erholungswoche.
+              ${st.week_in_cycle}. Trainingswoche seit dem letzten Deload (Intervall: ${st.interval_weeks}) — Zeit für eine Erholungswoche.
             </div>
           </div>
           <button class="btn btn-primary btn-sm" onclick="startDeload()">Starten</button>
