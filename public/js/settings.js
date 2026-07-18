@@ -132,7 +132,12 @@ function savePlates(immediate) {
   clearTimeout(plateSaveTimer);
   plateSaveTimer = setTimeout(async () => {
     try {
-      await API.put('/api/settings', { plate_inventory: plateInv });
+      // Legacy "bar" field included so an older backend (version skew after a
+      // frontend-only deploy) never rejects the multi-bar format
+      const payload = plateInv
+        ? { ...plateInv, bar: plateInv.bars?.lh1?.weight ?? 20 }
+        : null;
+      await API.put('/api/settings', { plate_inventory: payload });
       showToast(plateInv ? 'Scheiben gespeichert' : 'Scheiben-Rechner deaktiviert', 'success');
     } catch (e) {
       showToast('Fehler beim Speichern: ' + e.message, 'error');
