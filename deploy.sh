@@ -4,8 +4,9 @@
 # ============================================================
 #
 # Aufruf auf der DS:
-#   sudo sh /volume1/docker/workout-tracker/deploy.sh            # nur Frontend (schnell, kein Re-Login)
-#   sudo sh /volume1/docker/workout-tracker/deploy.sh rebuild    # voller Rebuild (bei Backend-Änderungen)
+#   sudo sh /volume1/docker/workout-tracker/deploy.sh            # volles Update (Rebuild, immer sicher)
+#   sudo sh /volume1/docker/workout-tracker/deploy.sh schnell    # nur Frontend (kein Re-Login, nur wenn
+#                                                                  ausdruecklich "Frontend-only" angesagt)
 #
 # Vor JEDEM Update wird die Datenbank automatisch gesichert:
 #   /volume1/docker/workout-tracker/data/backups/<Zeitstempel>/
@@ -23,7 +24,14 @@ set -e
 BRANCH="main"
 WORKDIR="/volume1/docker/workout-tracker"
 ZIP_URL="https://github.com/nero2465/training/archive/refs/heads/${BRANCH}.zip"
-MODE="${1:-frontend}"
+MODE="${1:-rebuild}"
+# "schnell"/"frontend" -> frontend-only; alles andere (Default) -> rebuild.
+# Default ist bewusst der sichere Vollmodus: ein Frontend-only-Deploy bei
+# Backend-Aenderungen erzeugt Versions-Schiefstand (UI neu, API alt).
+case "$MODE" in
+  schnell|frontend|fast) MODE="frontend" ;;
+  *) MODE="rebuild" ;;
+esac
 
 echo "▶ Workout Tracker Deployment – Modus: ${MODE} (Quelle: ${BRANCH})"
 
