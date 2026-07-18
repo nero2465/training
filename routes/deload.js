@@ -19,8 +19,52 @@ function getOrCreateSettings(db, userId) {
   return settings;
 }
 
-// Central deload state resolution. Auto-finalizes an expired deload week and
-// lazily initialises cycle_start_date so existing users get a sane baseline.
+// Training weeks in the current cycle, derived purely from workout HISTORY
+// (works retroactively — no stored anchor needed):
+// - only weeks (Mon–Sun) with at least one completed regular workout count,
+//   so skipped weeks/vacation don't advance the cycle
+// - a gap of 14+ days between workouts acts as a natural deload and starts
+//   a new cycle
+// - a finished deload week is a hard cycle boundary
+function trainingWeeksInCycle(db, userId, boundaryIso) {
+  const rows = boundaryIso
+    ? db.prepare(`
+        SELECT DISTINCT DATE(started_at) as d FROM workouts
+        WHERE user_id = ? AND ended_at IS NOT NULL
+          AND (is_deload IS NULL OR is_deload = 0)
+          AND started_at > ?
+        ORDER BY d DESC
+      `).all(userId, boundaryIso)
+    : db.prepare(`
+        SELECT DISTINCT DATE(started_at) as d FROM workouts
+        WHERE user_id = ? AND ended_at IS NOT NULL
+          AND (is_deload IS NULL OR is_deload = 0)
+        ORDER BY d DESC
+      `).all(userId);
+
+  if (rows.length === 0) return 0;
+
+  // Walk backward from the most recent workout; stop at a 14+ day gap
+  const dates = rows.map(r => new Date(r.d + 'T12:00:00Z'));
+  const cycleDates = [dates[0]];
+  for (let i = 1; i < dates.length; i++) {
+    const gapDays = (dates[i - 1] - dates[i]) / 86400000;
+    if (gapDays >= 14) break;
+    cycleDates.push(dates[i]);
+  }
+
+  // Count distinct Monday-anchored weeks
+  const weeks = new Set(cycleDates.map(d => {
+    const day = (d.getUTCDay() + 6) % 7;
+    const mon = new Date(d);
+    mon.setUTCDate(d.getUTCDate() - day);
+    return mon.toISOString().slice(0, 10);
+  }));
+  return weeks.size;
+}
+
+// Central deload state resolution. Auto-finalizes an expired deload week;
+// the cycle itself is computed from training history (see above).
 function resolveDeloadState(db, userId) {
   let s = getOrCreateSettings(db, userId);
   const now = new Date();
@@ -35,22 +79,9 @@ function resolveDeloadState(db, userId) {
     s = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(userId);
   }
 
-  // First use: cycle starts at the most recent completed workout (or today)
-  if (!s.cycle_start_date) {
-    const lastWorkout = db.prepare(`
-      SELECT started_at FROM workouts
-      WHERE user_id = ? AND ended_at IS NOT NULL
-      ORDER BY started_at DESC LIMIT 1
-    `).get(userId);
-    const start = lastWorkout ? lastWorkout.started_at : now.toISOString();
-    db.prepare('UPDATE user_settings SET cycle_start_date = ? WHERE user_id = ?').run(start, userId);
-    s = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(userId);
-  }
-
   const active = !!(s.deload_active_until && new Date(s.deload_active_until) >= now);
-  const daysInCycle = Math.floor((now - new Date(s.cycle_start_date)) / 86400000);
-  const weekInCycle = Math.floor(daysInCycle / 7) + 1;
-  const due = !active && (s.deload_enabled === 1) && daysInCycle >= s.deload_interval_weeks * 7;
+  const weekInCycle = trainingWeeksInCycle(db, userId, s.last_deload_end || null);
+  const due = !active && (s.deload_enabled === 1) && weekInCycle >= s.deload_interval_weeks;
 
   // Post-deload week: first 7 days after a finished deload → reduced re-entry
   const postDeload = !active && s.last_deload_end &&
