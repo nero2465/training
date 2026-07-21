@@ -171,6 +171,12 @@ function bodyWeightAt(db, userId, dateIso) {
 // plus any added weight — honest volume/1RM for BW exercises.
 router.get('/progress/:exercise_id', requireAuth, (req, res) => {
   const db = getDb();
+  // Must be a number: it is compared against a COALESCE(...) expression, which
+  // has no column affinity — a text param ("2") never matches the integer
+  // values, so the whole page would silently show "keine Daten".
+  const exerciseId = parseInt(req.params.exercise_id, 10);
+  if (isNaN(exerciseId)) return res.status(400).json({ error: 'Ungültige Übungs-ID' });
+
   const rows = db.prepare(`
     SELECT
       DATE(w.started_at) as date,
@@ -182,15 +188,15 @@ router.get('/progress/:exercise_id', requireAuth, (req, res) => {
       ws.is_bodyweight
     FROM workout_sets ws
     JOIN workouts w ON w.id = ws.workout_id
-    JOIN session_exercises se ON se.id = ws.session_exercise_id
+    LEFT JOIN session_exercises se ON se.id = ws.session_exercise_id
     WHERE w.user_id = ?
       AND COALESCE(ws.exercise_id_snapshot, se.exercise_id) = ?
       AND w.ended_at IS NOT NULL
       AND (ws.skipped IS NULL OR ws.skipped = 0)
     ORDER BY w.started_at ASC, ws.set_number ASC
-  `).all(req.session.userId, req.params.exercise_id);
+  `).all(req.session.userId, exerciseId);
 
-  const exRow = db.prepare('SELECT bw_factor FROM exercises WHERE id = ?').get(req.params.exercise_id);
+  const exRow = db.prepare('SELECT bw_factor FROM exercises WHERE id = ?').get(exerciseId);
   const bwFactor = (exRow && exRow.bw_factor) || 0;
 
   const progress = [];
