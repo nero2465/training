@@ -10,6 +10,32 @@ function requireAuth(req, res, next) {
   next();
 }
 
+// GET /api/progress-exercises — only exercises the user actually has logged
+// (completed, non-skipped) data for, so the progress dropdown stays short and
+// never leads to an empty chart. Uses the snapshot name so renamed/deleted
+// exercises still appear.
+router.get('/progress-exercises', requireAuth, (req, res) => {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT
+      COALESCE(ws.exercise_id_snapshot, se.exercise_id) as id,
+      COALESCE(ws.exercise_name, e.name) as name,
+      COUNT(DISTINCT w.id) as workouts
+    FROM workout_sets ws
+    JOIN workouts w ON w.id = ws.workout_id
+    LEFT JOIN session_exercises se ON se.id = ws.session_exercise_id
+    LEFT JOIN exercises e ON e.id = COALESCE(ws.exercise_id_snapshot, se.exercise_id)
+    WHERE w.user_id = ?
+      AND w.ended_at IS NOT NULL
+      AND (ws.skipped IS NULL OR ws.skipped = 0)
+    GROUP BY COALESCE(ws.exercise_id_snapshot, se.exercise_id)
+    HAVING COALESCE(ws.exercise_id_snapshot, se.exercise_id) IS NOT NULL
+       AND COALESCE(ws.exercise_name, e.name) IS NOT NULL
+    ORDER BY name COLLATE NOCASE
+  `).all(req.session.userId);
+  res.json(rows);
+});
+
 // GET /api/stats/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD
 // Per-day volume + workouts, feeds the history calendar.
 router.get('/stats/calendar', requireAuth, (req, res) => {
