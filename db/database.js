@@ -160,6 +160,8 @@ function runMigrations() {
     // Aktivität getrennt: Beruf/Alltag + Sport (auto aus Logs + manueller Zusatz)
     'ALTER TABLE user_settings ADD COLUMN job_activity TEXT',
     'ALTER TABLE user_settings ADD COLUMN extra_sport_min INTEGER',
+    // Explizite Equipment-Zuordnung für den Scheiben-Rechner
+    'ALTER TABLE exercises ADD COLUMN equip_type TEXT',
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch(e) { /* column already exists */ }

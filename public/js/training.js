@@ -462,7 +462,7 @@ function updatePlateHint() {
   // Bar chosen automatically from the exercise's equipment (LH/SZ/KH);
   // a lighter second straight bar kicks in for weights below the main bar.
   const exNow = exercises[currentExerciseIndex];
-  const bar = pickBarForEquipment(plateInventory, exNow?.equipment, currentWeight);
+  const bar = pickBarForEquipment(plateInventory, exNow?.equipment, currentWeight, { name: exNow?.name, equipType: exNow?.equip_type });
   if (!bar || currentWeight < bar.weight) {
     el.style.display = 'none';
     return;
@@ -490,7 +490,7 @@ function updatePlateHint() {
 /* ── Warmup ramp (display only, never logged) ─────────────── */
 
 function buildWarmupRamp(workWeight, ex) {
-  const picked = pickBarForEquipment(plateInventory, ex?.equipment, workWeight);
+  const picked = pickBarForEquipment(plateInventory, ex?.equipment, workWeight, { name: ex?.name, equipType: ex?.equip_type });
   if (picked && picked.perDumbbell) return []; // no barbell ramp for dumbbell work
   const bar = picked ? picked.weight : 20;
   if (!workWeight || workWeight < bar * 1.5) return []; // too light, no ramp needed

@@ -320,11 +320,15 @@ function renderWorkoutDetail(workout) {
     const hasBodyweightSets = sets.some(s => s.is_bodyweight);
 
     const rows = sets.map(s => `
-      <tr class="set-row-editable" id="setrow-${s.id}" onclick="startEditSet(${s.id}, ${s.weight}, ${s.reps}, ${workout.id})" title="Antippen zum Bearbeiten">
+      <tr id="setrow-${s.id}">
         <td>Satz ${s.set_number}</td>
-        <td id="setcell-w-${s.id}">${formatSetMetric(s, 'weight')}</td>
-        <td id="setcell-r-${s.id}">${formatSetMetric(s, 'reps')}</td>
+        <td class="set-row-editable" id="setcell-w-${s.id}" onclick="startEditSet(${s.id}, ${s.weight}, ${s.reps}, ${workout.id})" title="Antippen zum Bearbeiten">${formatSetMetric(s, 'weight')}</td>
+        <td class="set-row-editable" id="setcell-r-${s.id}" onclick="startEditSet(${s.id}, ${s.weight}, ${s.reps}, ${workout.id})" title="Antippen zum Bearbeiten">${formatSetMetric(s, 'reps')}</td>
         <td id="setcell-v-${s.id}">${(s.weight * s.reps).toFixed(0)} kg</td>
+        <td id="setcell-x-${s.id}" style="text-align:right;">
+          <button onclick="deleteSet(${s.id}, ${workout.id})" title="Satz löschen"
+            style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:1rem; padding:2px 4px;">🗑</button>
+        </td>
       </tr>
     `).join('');
 
@@ -340,6 +344,7 @@ function renderWorkoutDetail(workout) {
               <th>Gewicht</th>
               <th>Wdh.</th>
               <th>Volumen</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -351,7 +356,31 @@ function renderWorkoutDetail(workout) {
     `;
   });
 
-  return `<div style="padding:4px 0;">${parts.join('')}</div>`;
+  return `<div style="padding:4px 0;">
+    <div style="font-size:0.74rem; color:var(--text-muted); margin:0 0 8px; padding:6px 10px; background:var(--bg-elevated); border-radius:6px;">
+      ✏️ Gewicht/Wdh. antippen zum Korrigieren · 🗑 löscht einen einzelnen Satz (z.B. Dubletten)
+    </div>
+    ${parts.join('')}
+  </div>`;
+}
+
+async function deleteSet(setId, workoutId) {
+  if (!confirm('Diesen Satz löschen?')) return;
+  try {
+    const res = await API.delete(`/api/workout-sets/${setId}`);
+    showToast('Satz gelöscht', 'success');
+    loadCalendar(); // day volume may change
+    if (res.workout_deleted) {
+      // Was the last set — the whole workout is gone; drop its card
+      const wrapper = document.getElementById(`wcard-wrapper-${workoutId}`);
+      if (wrapper) wrapper.remove();
+      showToast('Training war leer und wurde entfernt', 'info');
+    } else {
+      await refreshDetail(workoutId);
+    }
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
 }
 
 function formatSetMetric(set, type) {

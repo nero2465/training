@@ -80,7 +80,7 @@ function startOrm() {
   ormBest = 0;
 
   const ex = ormExercises.find(e => e.id === ormExerciseId);
-  ormBar = pickBarForEquipment(plateInv, ex?.equipment, ormTarget);
+  ormBar = pickBarForEquipment(plateInv, ex?.equipment, ormTarget, { name: ex?.name, equipType: ex?.equip_type });
   document.getElementById('orm-flow-exercise').textContent = ex ? ex.name : '';
   document.getElementById('orm-flow-target').textContent = formatWeight(ormTarget);
 
