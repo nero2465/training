@@ -55,12 +55,21 @@ async function loadMuscleVolume() {
 
 async function loadExercises() {
   try {
-    allExercises = await API.get('/api/exercises');
+    // Only exercises with actual logged data — no empty-chart dead ends
+    allExercises = await API.get('/api/progress-exercises');
     const select = document.getElementById('exercise-select');
+
+    if (allExercises.length === 0) {
+      select.innerHTML = '<option value="">-- Noch keine Trainingsdaten --</option>';
+      const prompt = document.getElementById('select-prompt');
+      if (prompt) prompt.textContent = 'Absolviere dein erstes Training, dann erscheint hier dein Fortschritt.';
+      return;
+    }
+
     allExercises.forEach(ex => {
       const opt = document.createElement('option');
       opt.value = ex.id;
-      opt.textContent = ex.name;
+      opt.textContent = ex.workouts ? `${ex.name} (${ex.workouts})` : ex.name;
       select.appendChild(opt);
     });
   } catch (e) {
