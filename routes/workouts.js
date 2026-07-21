@@ -484,5 +484,27 @@ router.put('/workout-sets/:id', requireAuth, (req, res) => {
   res.json(updated);
 });
 
+// DELETE /api/workout-sets/:id — remove a single set (e.g. a duplicate from a
+// hung session). If it was the workout's last set, the workout is removed too.
+router.delete('/workout-sets/:id', requireAuth, (req, res) => {
+  const db = getDb();
+  const set = db.prepare(`
+    SELECT ws.* FROM workout_sets ws
+    JOIN workouts w ON w.id = ws.workout_id
+    WHERE ws.id = ? AND w.user_id = ?
+  `).get(req.params.id, req.session.userId);
+  if (!set) return res.status(404).json({ error: 'Set not found' });
+
+  db.prepare('DELETE FROM workout_sets WHERE id = ?').run(set.id);
+
+  const remaining = db.prepare('SELECT COUNT(*) as c FROM workout_sets WHERE workout_id = ?').get(set.workout_id);
+  let workoutDeleted = false;
+  if (remaining.c === 0) {
+    db.prepare('DELETE FROM workouts WHERE id = ?').run(set.workout_id);
+    workoutDeleted = true;
+  }
+  res.json({ success: true, workout_deleted: workoutDeleted });
+});
+
 module.exports = router;
 module.exports.buildSetPlan = buildSetPlan; // exported for tests

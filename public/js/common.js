@@ -2,7 +2,7 @@
    Common Utilities - Shared across all pages
    ============================================================ */
 
-const APP_VERSION = '3.8';
+const APP_VERSION = '3.9';
 
 // API helper
 const API = {
@@ -280,19 +280,37 @@ function primaryBarWeight(inv) {
   return inv?.bars?.lh1?.weight ?? inv?.bar ?? 20;
 }
 
-// Choose the right bar for an exercise from its equipment text.
-// Returns { id, weight, label, em, perDumbbell, pair } or null — null means
-// "no plate hint" (machine/cable/kettlebell exercises, or bar disabled).
-function pickBarForEquipment(inv, equipment, targetWeight) {
+// Choose the right bar for an exercise. Priority:
+//   1. explicit equip_type set in the catalog (langhantel/sz/kurzhantel/
+//      maschine/bodyweight) — the authoritative override
+//   2. keywords in the equipment text AND the exercise name
+//   3. nothing recognizable → null (NO barbell fallback, so machines and
+//      unknown exercises show no plate hint instead of a wrong Langhantel)
+// opts: { name, equipType }
+// Returns { id, weight, label, em, perDumbbell, pair } or null.
+function pickBarForEquipment(inv, equipment, targetWeight, opts) {
   if (!inv || !inv.bars) return null;
-  const eq = (equipment || '').toLowerCase();
+  const equipType = (opts && opts.equipType) || null;
+  const name = (opts && opts.name) || '';
+  const text = ((equipment || '') + ' ' + name).toLowerCase();
 
   let id;
-  if (eq.includes('sz')) id = 'sz';
-  else if (eq.includes('kurzhantel')) id = 'kh';
-  else if (eq.includes('langhantel')) id = 'lh1';
-  else if (eq === '') id = 'lh1'; // no metadata → assume barbell (status quo)
-  else return null;               // machine, cable, kettlebell, bodyweight …
+  if (equipType) {
+    // Explicit assignment wins
+    if (equipType === 'maschine' || equipType === 'bodyweight') return null;
+    if (equipType === 'sz') id = 'sz';
+    else if (equipType === 'kurzhantel') id = 'kh';
+    else if (equipType === 'langhantel') id = 'lh1';
+    else return null;
+  } else if (text.includes('sz-') || text.includes('sz ') || text.includes('sz-stange')) {
+    id = 'sz';
+  } else if (text.includes('kurzhantel')) {
+    id = 'kh';
+  } else if (text.includes('langhantel')) {
+    id = 'lh1';
+  } else {
+    return null; // machine, cable, unknown → no hint
+  }
 
   let bar = inv.bars[id];
 
@@ -317,7 +335,7 @@ function pickBarForEquipment(inv, equipment, targetWeight) {
     perDumbbell: id === 'kh',
     // "Kurzhanteln" (plural) = one dumbbell per hand → plates split across
     // the pair; singular = one dumbbell held with both hands → full pool
-    pair: id === 'kh' && eq.includes('kurzhanteln')
+    pair: id === 'kh' && text.includes('kurzhanteln')
   };
 }
 

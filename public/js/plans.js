@@ -834,6 +834,13 @@ function openCatalogEdit(exerciseId) {
           <input type="number" class="form-control" id="catalog-edit-bwfactor-${exerciseId}" value="${ex.bw_factor ? Math.round(ex.bw_factor * 100) : ''}" placeholder="z.B. 65" step="5" min="5" max="150" style="font-size:0.85rem; padding:6px 8px; width:80px;">
           <span style="font-size:0.8rem; color:var(--text-muted);">% des Körpergewichts (für BW-Übungen)</span>
         </div>
+        <div class="form-group" style="margin-bottom:8px; display:flex; align-items:center; gap:8px;">
+          <label style="font-size:0.8rem; color:var(--text-muted); white-space:nowrap;">Gerät (Scheiben-Rechner)</label>
+          <select class="form-control" id="catalog-edit-equip-${exerciseId}" style="font-size:0.85rem; padding:6px 8px; width:auto;">
+            ${[['', 'Automatisch'], ['langhantel', '🏋️ Langhantel'], ['sz', '➰ SZ-Stange'], ['kurzhantel', '💪 Kurzhantel'], ['maschine', '⚙️ Maschine / Kabel'], ['bodyweight', '🤸 Körpergewicht']]
+              .map(([v, l]) => `<option value="${v}" ${(ex.equip_type || '') === v ? 'selected' : ''}>${l}</option>`).join('')}
+          </select>
+        </div>
         <div style="display:flex; gap:6px;">
           <button class="btn btn-primary btn-sm" onclick="saveCatalogEdit(${exerciseId})">Speichern</button>
           <button class="btn btn-outline btn-sm" onclick="cancelCatalogEdit(${exerciseId})">Abbrechen</button>
@@ -853,6 +860,7 @@ async function saveCatalogEdit(exerciseId) {
   const increment_kg = incrementRaw ? parseFloat(incrementRaw) : 0;
   const bwRaw = document.getElementById(`catalog-edit-bwfactor-${exerciseId}`)?.value;
   const bw_factor = bwRaw ? parseFloat(bwRaw) / 100 : null;
+  const equip_type = document.getElementById(`catalog-edit-equip-${exerciseId}`)?.value || null;
 
   if (!name) {
     showToast('Name ist erforderlich', 'error');
@@ -860,7 +868,7 @@ async function saveCatalogEdit(exerciseId) {
   }
 
   try {
-    const updated = await API.put(`/api/exercises/${exerciseId}`, { name, muscle_groups, technique_tip, increment_kg, bw_factor });
+    const updated = await API.put(`/api/exercises/${exerciseId}`, { name, muscle_groups, technique_tip, increment_kg, bw_factor, equip_type });
     // Replace row with fresh rendered row
     const row = document.getElementById(`catalog-row-${exerciseId}`);
     if (row) {
