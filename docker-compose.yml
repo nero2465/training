@@ -20,7 +20,9 @@ services:
       # - /volume1/docker/workout-tracker/data:/data
       - workout-data:/data
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/auth/me"]
+      # Must hit the auth-free /api/health (200), not /api/auth/me which
+      # returns 401 when logged out and marks the container unhealthy.
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
