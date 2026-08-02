@@ -20,9 +20,10 @@ RUN mkdir -p /app/db
 # Expose port
 EXPOSE 3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -q --spider http://localhost:3000/api/auth/me || exit 1
+# Health check — hits the auth-free /api/health (200), not /api/auth/me
+# which returns 401 when logged out and would mark the container unhealthy.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD wget -q --spider http://localhost:3000/api/health || exit 1
 
 # Start server
 CMD ["node", "server.js"]

@@ -31,6 +31,12 @@ app.use(session({
   }
 }));
 
+// Health check endpoint (no auth) — used by the Docker HEALTHCHECK.
+// Must never require a session, otherwise the container shows "unhealthy".
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true, version: 'workout-tracker' });
+});
+
 // Static files
 app.use(express.static(path.join(__dirname, 'public')));
 
