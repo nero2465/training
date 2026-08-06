@@ -310,9 +310,24 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
   const scheme = se.scheme || 'straight';
   const deload = resolveDeloadState(db, req.session.userId);
 
-  // Most recent completed REGULAR workout for this slot (deload workouts are
-  // never used as a progression reference), matching the current exercise
-  // (guards against stale data from a swapped exercise).
+  // The 90% post-deload re-entry week is a deliberate light week — it must not
+  // become the progression baseline, otherwise the following week would build
+  // on 90% instead of returning to the pre-deload weight. So workouts started
+  // within the re-entry window [last_deload_end, +7 days) are excluded from the
+  // reference lookup, just like the deload week itself. (During the re-entry
+  // week the reference is then the pre-deload workout, giving the correct 90%.)
+  const lastDeloadEnd = deload.settings && deload.settings.last_deload_end;
+  const reentryEnd = lastDeloadEnd
+    ? new Date(new Date(lastDeloadEnd).getTime() + 7 * 86400000).toISOString()
+    : null;
+  const excludeReentry = lastDeloadEnd
+    ? 'AND NOT (w.started_at >= ? AND w.started_at < ?)'
+    : '';
+  const reentryParams = lastDeloadEnd ? [lastDeloadEnd, reentryEnd] : [];
+
+  // Most recent completed REGULAR workout for this slot (deload + re-entry
+  // workouts are never used as a progression reference), matching the current
+  // exercise (guards against stale data from a swapped exercise).
   const lastWorkout = db.prepare(`
     SELECT w.id
     FROM workouts w
@@ -321,10 +336,11 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
       AND w.user_id = ?
       AND w.ended_at IS NOT NULL
       AND (w.is_deload IS NULL OR w.is_deload = 0)
+      ${excludeReentry}
       AND COALESCE(ws.exercise_id_snapshot, ?) = ?
     ORDER BY w.started_at DESC
     LIMIT 1
-  `).get(req.params.session_exercise_id, req.session.userId, se.exercise_id, se.exercise_id);
+  `).get(req.params.session_exercise_id, req.session.userId, ...reentryParams, se.exercise_id, se.exercise_id);
 
   let lastSets = [];
   if (lastWorkout) {
