@@ -244,13 +244,13 @@
           <div class="control-group">
             <div class="control-label">Gewicht</div>
             <div class="stepper">
-              <button class="stepper-btn" onclick="adjustWeight(-2.5)">−</button>
+              <button class="stepper-btn" id="weight-minus" onclick="adjustWeight(-1)">−</button>
               <div class="stepper-value">
-                <input type="number" id="weight-display" value="0" min="0" step="2.5"
+                <input type="number" id="weight-display" value="0" min="0" step="0.5"
                   style="background:transparent;border:none;border-bottom:1px solid var(--border);color:inherit;font-size:1.4rem;font-weight:700;width:70px;text-align:center;outline:none;"
                   onchange="setWeightFromInput()" oninput="setWeightFromInput()"> kg
               </div>
-              <button class="stepper-btn" onclick="adjustWeight(2.5)">+</button>
+              <button class="stepper-btn" id="weight-plus" onclick="adjustWeight(1)">+</button>
             </div>
           </div>
           <div class="control-group">

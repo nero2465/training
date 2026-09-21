@@ -2,7 +2,7 @@
    Common Utilities - Shared across all pages
    ============================================================ */
 
-const APP_VERSION = '4.3';
+const APP_VERSION = '4.4';
 
 // API helper
 const API = {
@@ -99,7 +99,8 @@ function formatTime(dateStr) {
 // Format weight
 function formatWeight(kg) {
   if (kg === 0) return '0 kg';
-  return `${kg % 1 === 0 ? kg : kg.toFixed(1)} kg`;
+  // Up to 2 decimals so 0.25 grids (1.25 kg plates) stay exact, no trailing zeros
+  return `${kg % 1 === 0 ? kg : parseFloat(kg.toFixed(2))} kg`;
 }
 
 // Web Audio API - generate beep sounds

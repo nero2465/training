@@ -36,6 +36,7 @@ let lastSetId = null;          // ID of last saved set, for updating rating/note
 let restMinimized = false;
 let skippedSets = {};          // { sessionExerciseId: Set of set numbers skipped }
 let recommendedWeights = {};   // { sessionExerciseId: recommended weight } for smart rating pre-select
+let currentIncrement = 2.5;    // step size of the active exercise (drives the +/- buttons)
 let suggestedRating = 2;       // computed from last logged set vs targets
 let setPlans = {};             // { sessionExerciseId: [{set, weight, reps}] } from scheme/deload
 let deloadActive = false;      // true while the whole workout runs in deload mode
@@ -322,6 +323,9 @@ async function loadRecommendation(sessionExerciseId) {
     }
 
     recommendedWeights[sessionExerciseId] = rec.recommended_weight || 0;
+    // Stepper follows the exercise's configured increment (0.5 / 1 / 2.5 ...)
+    currentIncrement = rec.increment > 0 ? rec.increment : 2.5;
+    applyIncrementToStepper();
     setPlans[sessionExerciseId] = rec.set_plan || null;
     deloadActive = rec.deload === true;
 
@@ -418,13 +422,27 @@ function setWeightFromInput() {
   const input = document.getElementById('weight-display');
   const val = parseFloat(input.value);
   if (!isNaN(val) && val >= 0) {
-    currentWeight = Math.round(val * 10) / 10;
+    currentWeight = Math.round(val * 100) / 100;
   }
 }
 
+// delta is a SIGN (+1 / -1) from the stepper buttons; the actual step is the
+// exercise's increment. A numeric delta (legacy calls) is still honoured.
 function adjustWeight(delta) {
-  currentWeight = Math.max(0, Math.round((currentWeight + delta) * 10) / 10);
+  const step = Math.abs(delta) === 1 ? currentIncrement * Math.sign(delta) : delta;
+  currentWeight = Math.max(0, Math.round((currentWeight + step) * 100) / 100);
   updateWeightDisplay();
+}
+
+// Reflect the increment on the stepper buttons and the number input
+function applyIncrementToStepper() {
+  const input = document.getElementById('weight-display');
+  if (input) input.step = currentIncrement;
+  const label = currentIncrement % 1 === 0 ? currentIncrement : String(currentIncrement).replace('.', ',');
+  const minus = document.getElementById('weight-minus');
+  const plus = document.getElementById('weight-plus');
+  if (minus) minus.title = `− ${label} kg`;
+  if (plus) plus.title = `+ ${label} kg`;
 }
 
 function adjustReps(delta) {
@@ -434,7 +452,7 @@ function adjustReps(delta) {
 
 function updateWeightDisplay() {
   const el = document.getElementById('weight-display');
-  el.value = currentWeight % 1 === 0 ? currentWeight : currentWeight.toFixed(1);
+  el.value = currentWeight % 1 === 0 ? currentWeight : parseFloat(currentWeight.toFixed(2));
   updatePlateHint();
 }
 
