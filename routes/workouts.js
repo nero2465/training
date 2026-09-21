@@ -240,32 +240,47 @@ router.get('/progress/:exercise_id', requireAuth, (req, res) => {
   res.json(progress);
 });
 
-// Round to the nearest 2.5 kg (plate-loadable)
-function roundPlate(w) {
-  return Math.max(0, Math.round(w / 2.5) * 2.5);
+// Kill float noise from repeated * / (e.g. 58.500000000000004)
+function round3(v) {
+  return Math.round(v * 1000) / 1000;
+}
+
+// Snap a DERIVED weight (percentage of a working weight) onto the grid the
+// user can actually load. The grid is the exercise's configured increment —
+// hard-coding 2.5 here swallowed 0.5 and 1 kg progressions entirely.
+function roundPlate(w, step = 2.5) {
+  const s = step > 0 ? step : 2.5;
+  return Math.max(0, round3(Math.round(w / s) * s));
 }
 
 // Build the per-set plan for a scheme from the top working weight.
-// Every scheme is a pure function (scheme, topWeight, sets, repsMin, repsMax) → [{set, weight, reps}]
-function buildSetPlan(scheme, topWeight, sets, repsMin, repsMax) {
+// The TOP set is used exactly as computed (it is already last weight ±
+// increment, i.e. on the user's own grid); only the derived percentage sets
+// are snapped to the `step` grid.
+// (scheme, topWeight, sets, repsMin, repsMax, step) -> [{set, weight, reps}]
+function buildSetPlan(scheme, topWeight, sets, repsMin, repsMax, step = 2.5) {
   const plan = [];
+  const top = round3(Math.max(0, topWeight));
+  const at = (pct) => roundPlate(topWeight * pct, step);
+
   switch (scheme) {
     case 'pyramid_asc': {
-      // Weight ramps 65% → 100%, reps descend repsMax → repsMin
+      // Weight ramps 65% -> 100%, reps descend repsMax -> repsMin
       for (let i = 0; i < sets; i++) {
+        const isTop = i === sets - 1;
         const f = sets === 1 ? 1 : 0.65 + (i / (sets - 1)) * 0.35;
         const reps = sets === 1 ? repsMin
           : Math.round(repsMax - (i / (sets - 1)) * (repsMax - repsMin));
-        plan.push({ set: i + 1, weight: roundPlate(topWeight * f), reps });
+        plan.push({ set: i + 1, weight: isTop ? top : at(f), reps });
       }
       break;
     }
     case 'pyramid_desc': {
-      // Reverse Pyramid: heaviest first (fresh), then −10% per set, +2 reps
+      // Reverse Pyramid: heaviest first (fresh), then -10% per set, +2 reps
       for (let i = 0; i < sets; i++) {
         plan.push({
           set: i + 1,
-          weight: roundPlate(topWeight * Math.pow(0.9, i)),
+          weight: i === 0 ? top : at(Math.pow(0.9, i)),
           reps: repsMin + i * 2
         });
       }
@@ -276,7 +291,7 @@ function buildSetPlan(scheme, topWeight, sets, repsMin, repsMax) {
       for (let i = 0; i < sets; i++) {
         plan.push({
           set: i + 1,
-          weight: i === 0 ? roundPlate(topWeight) : roundPlate(topWeight * 0.85),
+          weight: i === 0 ? top : at(0.85),
           reps: i === 0 ? repsMin : repsMax
         });
       }
@@ -285,7 +300,7 @@ function buildSetPlan(scheme, topWeight, sets, repsMin, repsMax) {
     default: {
       // straight / double_progression: constant weight across all sets
       for (let i = 0; i < sets; i++) {
-        plan.push({ set: i + 1, weight: roundPlate(topWeight), reps: repsMax });
+        plan.push({ set: i + 1, weight: top, reps: repsMax });
       }
     }
   }
@@ -396,7 +411,7 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
   //    no progression logic applied ──
   if (deload.active) {
     const pct = (settings && settings.deload_percent) || 55;
-    const deloadWeight = roundPlate(maxWeight * pct / 100);
+    const deloadWeight = roundPlate(maxWeight * pct / 100, increment);
     const deloadSets = Math.ceil(se.sets / 2);
     return res.json({
       recommended_weight: deloadWeight,
@@ -406,7 +421,7 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
       scheme,
       deload: true,
       sets_override: deloadSets,
-      set_plan: buildSetPlan('straight', deloadWeight, deloadSets, se.reps_min, se.reps_max),
+      set_plan: buildSetPlan('straight', deloadWeight, deloadSets, se.reps_min, se.reps_max, increment),
       auto_progress: autoProgress,
       last_bodyweight: lastSets.some(set => Number(set.is_bodyweight) === 1),
       last_sets: lastSets
@@ -425,7 +440,7 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
 
   if (deload.postDeload) {
     // First week after a deload: re-enter at ~90% of pre-deload weight
-    topWeight = roundPlate(maxWeight * 0.9);
+    topWeight = roundPlate(maxWeight * 0.9, increment);
     reason = 'post_deload';
   } else if (autoProgress) {
     if (scheme === 'double_progression') {
@@ -454,7 +469,7 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
     }
   }
 
-  const setPlan = buildSetPlan(scheme, topWeight, se.sets, se.reps_min, se.reps_max);
+  const setPlan = buildSetPlan(scheme, topWeight, se.sets, se.reps_min, se.reps_max, increment);
 
   res.json({
     recommended_weight: setPlan[0].weight,
