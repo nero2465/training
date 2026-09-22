@@ -29,6 +29,8 @@ let restRemaining = 60;
 let restInterval = null;
 let restPaused = false;
 let restAfterLastSet = false; // if true, advance to next exercise when done
+let sessionPausedMs = 0;      // total time the session timer was paused
+let sessionPauseStart = null; // when the current pause began (null = running)
 
 // New state variables
 let currentRating = null;      // 1/2/3 selected in rest overlay
@@ -50,6 +52,15 @@ async function init() {
   // Load workout from storage
   workoutData = WorkoutStorage.load();
   if (!workoutData) {
+    // Pointer lost (cleared storage, other device) but a workout may still be
+    // open on the server — pick it up instead of stranding the user.
+    try {
+      const active = await API.get('/api/workouts/active');
+      if (active && active.id) {
+        resumeWorkout(active); // saves the pointer and reloads this page
+        return;
+      }
+    } catch (e) { /* fall through to dashboard */ }
     showToast('Kein aktives Training gefunden.', 'error');
     setTimeout(() => window.location.href = '/dashboard.html', 1500);
     return;
@@ -711,34 +722,75 @@ function skipSet() {
   // else: same exercise, set bubbles already updated, user continues
 }
 
+// Reps label for a plan entry / exercise target ("8" or "8–12")
+function repsLabel(min, max) {
+  return min === max ? `${min}` : `${min}–${max}`;
+}
+
+// Two-stage rest preview:
+//   1. the sets still open in the CURRENT exercise (weight + reps per set —
+//      matters for schemes with changing load, e.g. pyramids)
+//   2. the NEXT exercise, always, with sets × reps and its weight
+function updateRestPreview() {
+  const remInfo = document.getElementById('rest-remaining-info');
+  const remNameEl = document.getElementById('rest-remaining-name');
+  const nextInfo = document.getElementById('next-exercise-info');
+  const nextNameEl = document.getElementById('next-exercise-name');
+  const ex = exercises[currentExerciseIndex];
+
+  // ── 1. Remaining sets of the current exercise ──
+  let remainingLines = [];
+  if (ex) {
+    const done = (loggedSets[ex.id]?.length || 0) + (skippedSets[ex.id]?.size || 0);
+    const plan = setPlans[ex.id];
+    for (let i = done; i < ex.sets; i++) {
+      const entry = plan ? plan[Math.min(i, plan.length - 1)] : null;
+      const w = entry ? entry.weight : currentWeight;
+      const r = entry ? entry.reps : currentReps;
+      remainingLines.push(`Satz ${i + 1}: ${r} Wdh. · ${formatWeight(w)}`);
+    }
+  }
+  if (remainingLines.length > 0) {
+    remInfo.style.display = 'block';
+    remNameEl.innerHTML = remainingLines.join('<br>');
+  } else {
+    remInfo.style.display = 'none';
+  }
+
+  // ── 2. Next exercise (always shown while one follows) ──
+  const next = exercises[currentExerciseIndex + 1];
+  if (!next) {
+    nextInfo.style.display = 'none';
+    return;
+  }
+  nextInfo.style.display = 'block';
+  const base = `${next.name} — ${next.sets}×${repsLabel(next.reps_min, next.reps_max)}`;
+  nextNameEl.textContent = base;
+  API.get(`/api/recommendations/${next.id}`).then(rec => {
+    // Guard: the user may have moved on while this was in flight
+    if (exercises[currentExerciseIndex + 1]?.id !== next.id) return;
+    const sets = rec.sets_override || next.sets;
+    const plan = rec.set_plan;
+    const reps = plan && plan.length ? plan[0].reps : repsLabel(next.reps_min, next.reps_max);
+    let line = `${next.name} — ${sets}×${reps}`;
+    if (rec.recommended_weight > 0) line += ` · ${formatWeight(rec.recommended_weight)}`;
+    nextNameEl.textContent = line;
+  }).catch(() => {});
+}
+
 function startRestTimer(afterLastSet) {
   restAfterLastSet = afterLastSet;
   restRemaining = restDuration;
   restPaused = false;
   restMinimized = false;
+  setSessionPaused(false);
 
   // Pre-select rating based on how the set actually went (Fix: was always 2)
   const noteEl = document.getElementById('set-note');
   if (noteEl) noteEl.value = '';
   selectRating(suggestedRating);
 
-  // Show next exercise info if last set — including its weight, so the
-  // user can set up the next station during the rest period.
-  const nextInfo = document.getElementById('next-exercise-info');
-  const nextNameEl = document.getElementById('next-exercise-name');
-
-  if (afterLastSet && currentExerciseIndex + 1 < exercises.length) {
-    const next = exercises[currentExerciseIndex + 1];
-    nextInfo.style.display = 'block';
-    nextNameEl.textContent = next.name;
-    API.get(`/api/recommendations/${next.id}`).then(rec => {
-      if (rec.recommended_weight > 0) {
-        nextNameEl.textContent = `${next.name} — ${formatWeight(rec.recommended_weight)}`;
-      }
-    }).catch(() => {});
-  } else {
-    nextInfo.style.display = 'none';
-  }
+  updateRestPreview();
 
   // Show overlay
   document.getElementById('rest-timer-overlay').classList.remove('hidden');
@@ -794,6 +846,7 @@ function updateRingProgress() {
 
 function toggleRestTimer() {
   restPaused = !restPaused;
+  setSessionPaused(restPaused);
   document.getElementById('rest-toggle-btn').textContent = restPaused ? 'Weiter' : 'Pause';
 }
 
@@ -852,6 +905,7 @@ async function timerComplete() {
   }
 
   restMinimized = false;
+  setSessionPaused(false); // rest is over -> training time runs again
   document.getElementById('rest-timer-overlay').classList.add('hidden');
   const mini = document.getElementById('rest-mini');
   if (mini) mini.style.display = 'none';
@@ -1005,18 +1059,43 @@ function renderCompletedExercises() {
 }
 
 // Session Timer
+// Wall-clock based (survives background throttling), minus any paused time,
+// on top of the active time already accumulated before a resume.
+function currentSessionSeconds() {
+  if (!startedAt) return sessionSeconds;
+  const base = (workoutData && workoutData.elapsedSeconds) || 0;
+  const pausedNow = sessionPauseStart ? (Date.now() - sessionPauseStart) : 0;
+  const ms = Date.now() - startedAt.getTime() - sessionPausedMs - pausedNow;
+  return base + Math.max(0, Math.floor(ms / 1000));
+}
+
+function renderSessionTimer() {
+  const el = document.getElementById('session-timer');
+  if (!el) return;
+  el.textContent = formatDuration(sessionSeconds) + (sessionPauseStart ? ' ⏸' : '');
+  el.style.opacity = sessionPauseStart ? '0.55' : '1';
+}
+
 function startSessionTimer() {
-  // Calculate seconds already elapsed
-  if (startedAt) {
-    sessionSeconds = Math.floor((Date.now() - startedAt.getTime()) / 1000);
-  }
-
+  sessionSeconds = currentSessionSeconds();
   sessionTimerInterval = setInterval(() => {
-    sessionSeconds++;
-    document.getElementById('session-timer').textContent = formatDuration(sessionSeconds);
+    sessionSeconds = currentSessionSeconds();
+    renderSessionTimer();
   }, 1000);
+  renderSessionTimer();
+}
 
-  document.getElementById('session-timer').textContent = formatDuration(sessionSeconds);
+// Pausing the rest timer pauses the TRAINING time too — a break is not
+// training time, and an interrupted session can be resumed later.
+function setSessionPaused(paused) {
+  if (paused && !sessionPauseStart) {
+    sessionPauseStart = Date.now();
+  } else if (!paused && sessionPauseStart) {
+    sessionPausedMs += Date.now() - sessionPauseStart;
+    sessionPauseStart = null;
+  }
+  sessionSeconds = currentSessionSeconds();
+  renderSessionTimer();
 }
 
 async function endTraining() {

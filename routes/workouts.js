@@ -128,6 +128,36 @@ router.get('/workouts', requireAuth, (req, res) => {
   res.json(workouts);
 });
 
+// GET /api/workouts/active — the most recent UNFINISHED workout, so a session
+// interrupted by a long break (or a phone that dropped the tab) can be resumed
+// instead of being lost. Declared before /workouts/:id so "active" is not
+// swallowed as an id.
+router.get('/workouts/active', requireAuth, (req, res) => {
+  const db = getDb();
+  const w = db.prepare(`
+    SELECT w.id, w.session_id, w.started_at,
+           ps.session_label, tp.name as plan_name,
+           COUNT(ws.id) as total_sets,
+           MAX(ws.completed_at) as last_set_at,
+           CAST((julianday(MAX(ws.completed_at)) - julianday(w.started_at)) * 86400 AS INTEGER) as elapsed_seconds
+    FROM workouts w
+    JOIN plan_sessions ps ON ps.id = w.session_id
+    JOIN training_plans tp ON tp.id = ps.plan_id
+    LEFT JOIN workout_sets ws ON ws.workout_id = w.id
+    WHERE w.user_id = ? AND w.ended_at IS NULL
+    GROUP BY w.id
+    HAVING COUNT(ws.id) > 0
+    ORDER BY w.started_at DESC
+    LIMIT 1
+  `).get(req.session.userId);
+
+  if (!w) return res.json(null);
+  // Active training time = start -> last logged set. A one-hour break in
+  // between must not inflate the session timer when resuming.
+  w.elapsed_seconds = Math.max(0, w.elapsed_seconds || 0);
+  res.json(w);
+});
+
 // GET /api/workouts/:id
 router.get('/workouts/:id', requireAuth, (req, res) => {
   const db = getDb();
