@@ -2,7 +2,7 @@
    Common Utilities - Shared across all pages
    ============================================================ */
 
-const APP_VERSION = '4.4';
+const APP_VERSION = '4.5';
 
 // API helper
 const API = {
@@ -420,18 +420,42 @@ function formatPlateLoadout(loadout, inv) {
 }
 
 // Store current workout in sessionStorage
+// localStorage, NOT sessionStorage: iOS drops a backgrounded tab after a
+// while, which wiped sessionStorage and made a paused workout unreachable
+// even though it was still open in the database.
 const WorkoutStorage = {
   save(data) {
-    sessionStorage.setItem('currentWorkout', JSON.stringify(data));
+    try { localStorage.setItem('currentWorkout', JSON.stringify(data)); } catch (e) {}
   },
   load() {
-    const data = sessionStorage.getItem('currentWorkout');
-    return data ? JSON.parse(data) : null;
+    try {
+      const data = localStorage.getItem('currentWorkout')
+        || sessionStorage.getItem('currentWorkout'); // migrate old sessions
+      return data ? JSON.parse(data) : null;
+    } catch (e) {
+      return null;
+    }
   },
   clear() {
-    sessionStorage.removeItem('currentWorkout');
+    try { localStorage.removeItem('currentWorkout'); } catch (e) {}
+    try { sessionStorage.removeItem('currentWorkout'); } catch (e) {}
   }
 };
+
+// Resume an unfinished workout: point the training page at the existing
+// workout id. `elapsedSeconds` carries the ACTIVE training time so far
+// (start -> last logged set), so a long break is not counted as training.
+function resumeWorkout(w) {
+  WorkoutStorage.save({
+    workoutId: w.id,
+    sessionId: w.session_id,
+    sessionLabel: w.session_label,
+    startedAt: new Date().toISOString(),
+    elapsedSeconds: w.elapsed_seconds || 0,
+    resumed: true
+  });
+  window.location.href = '/training.html';
+}
 
 // Navigation helper
 function navigateTo(page) {

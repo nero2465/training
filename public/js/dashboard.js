@@ -39,6 +39,59 @@ async function init() {
   loadDeloadStatus();
   loadRotationHints();
   loadWeightReminder();
+  loadActiveWorkout();
+}
+
+// ── Unfinished workout: resume instead of losing it ───────
+
+let activeWorkout = null;   // unfinished workout offered for resume
+
+async function loadActiveWorkout() {
+  const card = document.getElementById('resume-card');
+  if (!card) return;
+  let w;
+  try {
+    w = await API.get('/api/workouts/active');
+  } catch (e) {
+    return; // non-blocking
+  }
+  if (!w || !w.id) return;
+  activeWorkout = w;
+
+  const when = `${formatDate(w.started_at)}, ${formatTime(w.started_at)}`;
+  const mins = Math.round((w.elapsed_seconds || 0) / 60);
+  card.className = 'card';
+  card.innerHTML = `
+    <div style="display:flex; align-items:center; gap:14px;">
+      <div style="font-size:2rem;">⏸</div>
+      <div style="flex:1;">
+        <div style="font-weight:700; color:var(--text-primary);">Training nicht beendet</div>
+        <div style="font-size:0.85rem; color:var(--text-muted); margin-top:2px;">
+          ${escapeHtml(w.session_label)} · ${w.total_sets} ${w.total_sets === 1 ? 'Satz' : 'Sätze'} · ${mins} min<br>${when}
+        </div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="resumeActive()">Fortsetzen</button>
+    </div>
+    <div style="margin-top:10px; text-align:right;">
+      <button class="btn btn-ghost btn-sm" style="color:var(--text-muted);" onclick="discardActive(${w.id})">Verwerfen &amp; abschließen</button>
+    </div>
+  `;
+}
+
+function resumeActive() {
+  if (activeWorkout) resumeWorkout(activeWorkout);
+}
+
+async function discardActive(id) {
+  if (!confirm('Training als beendet markieren? Die bereits erfassten Sätze bleiben erhalten.')) return;
+  try {
+    await API.put(`/api/workouts/${id}/end`, {});
+    document.getElementById('resume-card').className = 'card hidden';
+    showToast('Training abgeschlossen', 'success');
+    loadLastWorkout();
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
 }
 
 // ── Weekly weigh-in reminder ──────────────────────────────

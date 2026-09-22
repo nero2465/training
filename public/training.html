@@ -344,7 +344,11 @@
       <button class="btn btn-primary" id="rest-toggle-btn" onclick="toggleRestTimer()">Pause</button>
     </div>
 
-    <!-- Next exercise info -->
+    <!-- Rest preview: remaining sets of this exercise, then the next exercise -->
+    <div class="next-exercise-info" id="rest-remaining-info" style="display:none;">
+      <div class="label">Noch in dieser Übung</div>
+      <div class="name" id="rest-remaining-name"></div>
+    </div>
     <div class="next-exercise-info" id="next-exercise-info" style="display:none;">
       <div class="label">Nächste Übung</div>
       <div class="name" id="next-exercise-name"></div>

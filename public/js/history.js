@@ -247,6 +247,11 @@ function createWorkoutCard(workout) {
         <span>${workout.total_sets || 0} Sätze</span>
         ${workout.ended_at ? `<span>${duration}</span>` : '<span class="text-warning">Nicht beendet</span>'}
       </div>
+      ${workout.ended_at ? '' : `
+      <div style="margin-top:8px; display:flex; gap:8px;" onclick="event.stopPropagation()">
+        <button class="btn btn-primary btn-sm" onclick="resumeFromHistory(${workout.id})">▶ Fortsetzen</button>
+        <button class="btn btn-secondary btn-sm" onclick="finishFromHistory(${workout.id})">Abschließen</button>
+      </div>`}
     </div>
     <div class="workout-detail" id="wdetail-${workout.id}"></div>
   `;
@@ -467,4 +472,40 @@ if (typeof window !== 'undefined') {
 
 if (typeof module !== 'undefined') {
   module.exports = { renderWorkoutDetail, formatSetMetric };
+}
+
+
+/* ── Unfinished workouts: continue where they stopped ────── */
+
+async function resumeFromHistory(workoutId) {
+  try {
+    const active = await API.get('/api/workouts/active');
+    if (active && active.id === workoutId) {
+      resumeWorkout(active);
+      return;
+    }
+    // Not the most recent open one — resume it directly with its own data
+    const w = await API.get(`/api/workouts/${workoutId}`);
+    if (w.ended_at) { showToast('Dieses Training ist bereits abgeschlossen', 'info'); return; }
+    resumeWorkout({
+      id: w.id,
+      session_id: w.session_id,
+      session_label: w.session_label,
+      elapsed_seconds: 0
+    });
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
+}
+
+async function finishFromHistory(workoutId) {
+  if (!confirm('Training als beendet markieren? Die erfassten Sätze bleiben erhalten.')) return;
+  try {
+    await API.put(`/api/workouts/${workoutId}/end`, {});
+    showToast('Training abgeschlossen', 'success');
+    loadHistory();
+    loadCalendar();
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
 }
