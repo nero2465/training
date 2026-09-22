@@ -89,9 +89,22 @@ router.put('/workouts/:id/end', requireAuth, (req, res) => {
 
   if (!workout) return res.status(404).json({ error: 'Workout not found' });
 
-  db.prepare(
-    "UPDATE workouts SET ended_at = CURRENT_TIMESTAMP WHERE id = ?"
-  ).run(workout.id);
+  // Closing a workout that has been idle for a while (finished retroactively
+  // from the history, days later) must not record the wall-clock gap as
+  // training time — fall back to the last logged set's timestamp. A normal
+  // finish right after the last set keeps CURRENT_TIMESTAMP (cooldown counts).
+  db.prepare(`
+    UPDATE workouts
+    SET ended_at = CASE
+      WHEN (SELECT MAX(completed_at) FROM workout_sets WHERE workout_id = workouts.id) IS NOT NULL
+       AND (julianday('now') - julianday(
+             (SELECT MAX(completed_at) FROM workout_sets WHERE workout_id = workouts.id)
+           )) * 1440 > 30
+      THEN (SELECT MAX(completed_at) FROM workout_sets WHERE workout_id = workouts.id)
+      ELSE CURRENT_TIMESTAMP
+    END
+    WHERE id = ?
+  `).run(workout.id);
 
   const updated = db.prepare('SELECT * FROM workouts WHERE id = ?').get(workout.id);
   res.json(updated);
