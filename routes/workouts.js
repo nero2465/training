@@ -479,7 +479,22 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
   const anyTooHard = ratings.includes(1);
   const allTooHard = ratings.length > 0 && ratings.every(r => r === 1);
   const allSetsDone = lastSets.length >= se.sets;
-  const allRepsMax = lastSets.every(s => s.reps >= se.reps_max);
+
+  // Straight-weight schemes plan every set at the same weight, so a set below
+  // the session's top weight means the weight had to be reduced mid-exercise.
+  // Such a set never counts as "target reached", whatever its rep count or
+  // rating — otherwise 12 reps at a lowered weight would trigger an increase
+  // from the heavier weight. (Pyramid/backoff schemes are lighter by design.)
+  const constantWeightScheme = scheme === 'straight' || scheme === 'double_progression';
+  const anyReduced = constantWeightScheme && lastSets.some(s => s.weight < maxWeight - 1e-9);
+  const allRepsMax = !anyReduced && lastSets.every(s => s.reps >= se.reps_max);
+
+  // "zu leicht" on the LAST set (that is the set that tells how much was left
+  // in the tank — it also covers "all sets too easy") earns a double step,
+  // provided nothing was rated too hard.
+  const lastRating = lastSets.length ? lastSets[lastSets.length - 1].rating : null;
+  const lastTooEasy = lastRating === 3 && !anyTooHard;
+  const jump = lastTooEasy ? increment * 2 : increment;
 
   if (deload.postDeload) {
     // First week after a deload: re-enter at ~90% of pre-deload weight
@@ -492,8 +507,10 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
         topWeight = Math.max(0, maxWeight - increment);
         reason = 'decrease';
       } else if (allSetsDone && allRepsMax && !anyTooHard) {
-        topWeight = maxWeight + increment;
-        reason = 'dp_increase';
+        topWeight = maxWeight + jump;
+        reason = lastTooEasy ? 'dp_increase_easy' : 'dp_increase';
+      } else if (anyReduced) {
+        reason = 'hold_reduced';
       } else {
         reason = 'dp_reps'; // hold weight, push reps
       }
@@ -504,8 +521,10 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
       } else if (anyTooHard) {
         reason = 'hold_hard';
       } else if (allSetsDone && allRepsMax) {
-        topWeight = maxWeight + increment;
-        reason = 'increase';
+        topWeight = maxWeight + jump;
+        reason = lastTooEasy ? 'increase_easy' : 'increase';
+      } else if (anyReduced) {
+        reason = 'hold_reduced';
       } else {
         reason = 'hold';
       }
@@ -520,6 +539,7 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
     last_weight: maxWeight,
     avg_weight: Math.round(avgWeight * 2) / 2,
     increment,
+    applied_step: round3(topWeight - maxWeight),
     reason,
     scheme,
     deload: false,

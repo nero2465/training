@@ -406,8 +406,15 @@ function applyPlanForNextSet(sessionExerciseId) {
 }
 
 function recommendationReasonText(rec) {
-  const inc = rec.increment % 1 === 0 ? rec.increment : rec.increment.toFixed(1);
+  const fmt = v => (v % 1 === 0 ? v : parseFloat(v.toFixed(2)));
+  const inc = fmt(rec.increment);
+  const step = fmt(rec.applied_step > 0 ? rec.applied_step : rec.increment);
   switch (rec.reason) {
+    case 'increase_easy':
+    case 'dp_increase_easy':
+      return `<span style="color:var(--success, #4ade80);">(+${step} kg — doppelter Schritt, letzter Satz war zu leicht 💪💪)</span>`;
+    case 'hold_reduced':
+      return `<span style="color:var(--text-muted);">(halten — letztes Mal Gewicht reduziert, erst alle Sätze mit Zielgewicht schaffen)</span>`;
     case 'increase':
       return `<span style="color:var(--success, #4ade80);">(+${inc} kg — alle Wdh. geschafft 💪)</span>`;
     case 'dp_increase':
@@ -659,10 +666,11 @@ async function logSet() {
     buildSetBubbles(ex);
     updateLoggedSetsList(ex);
 
-    // Smart rating pre-select: below rep target or below recommended weight
-    // → "zu schwer"; above rep max → "zu leicht"; otherwise "ok".
-    const recWeight = recommendedWeights[ex.id] || 0;
-    if (currentReps < ex.reps_min || (recWeight > 0 && currentWeight < recWeight)) {
+    // Smart rating pre-select: below rep target → "zu schwer"; above rep max
+    // → "zu leicht"; otherwise "ok". A lowered weight no longer forces "zu
+    // schwer": the server already treats sets below the session's top weight
+    // as "target not reached", so the rating can say how the set really felt.
+    if (currentReps < ex.reps_min) {
       suggestedRating = 1;
     } else if (currentReps > ex.reps_max) {
       suggestedRating = 3;
