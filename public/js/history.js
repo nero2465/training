@@ -321,20 +321,23 @@ function renderWorkoutDetail(workout) {
 
   const parts = Object.entries(byExercise).map(([name, sets]) => {
     const maxWeight = Math.max(...sets.map(s => s.weight));
-    const totalVol = sets.reduce((sum, s) => sum + s.weight * s.reps, 0);
+    // Volume counts every rep moved, including rest-pause reps
+    const setVol = s => s.weight * (s.reps + (s.rest_pause_reps || 0));
+    const totalVol = sets.reduce((sum, s) => sum + setVol(s), 0);
     const hasBodyweightSets = sets.some(s => s.is_bodyweight);
 
     const rows = sets.map(s => `
-      <tr id="setrow-${s.id}">
+      <tr id="setrow-${s.id}" data-rp="${s.rest_pause ? escapeHtml(s.rest_pause) : ''}">
         <td>Satz ${s.set_number}</td>
         <td class="set-row-editable" id="setcell-w-${s.id}" onclick="startEditSet(${s.id}, ${s.weight}, ${s.reps}, ${workout.id})" title="Antippen zum Bearbeiten">${formatSetMetric(s, 'weight')}</td>
         <td class="set-row-editable" id="setcell-r-${s.id}" onclick="startEditSet(${s.id}, ${s.weight}, ${s.reps}, ${workout.id})" title="Antippen zum Bearbeiten">${formatSetMetric(s, 'reps')}</td>
-        <td id="setcell-v-${s.id}">${(s.weight * s.reps).toFixed(0)} kg</td>
+        <td id="setcell-v-${s.id}">${setVol(s).toFixed(0)} kg</td>
         <td id="setcell-x-${s.id}" style="text-align:right;">
           <button onclick="deleteSet(${s.id}, ${workout.id})" title="Satz löschen"
             style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:1rem; padding:2px 4px;">🗑</button>
         </td>
-      </tr>
+      </tr>${s.note && s.note.trim() ? `
+      <tr><td></td><td colspan="4" style="font-size:0.75rem; color:var(--text-muted); font-style:italic; padding-top:0;">„${escapeHtml(s.note.trim())}“</td></tr>` : ''}
     `).join('');
 
     return `
@@ -363,7 +366,7 @@ function renderWorkoutDetail(workout) {
 
   return `<div style="padding:4px 0;">
     <div style="font-size:0.74rem; color:var(--text-muted); margin:0 0 8px; padding:6px 10px; background:var(--bg-elevated); border-radius:6px;">
-      ✏️ Gewicht/Wdh. antippen zum Korrigieren · 🗑 löscht einen einzelnen Satz (z.B. Dubletten)
+      ✏️ Gewicht/Wdh. antippen zum Korrigieren (auch Rest-Pause nachtragen) · 🗑 löscht einen einzelnen Satz (z.B. Dubletten)
     </div>
     ${parts.join('')}
   </div>`;
@@ -389,7 +392,10 @@ async function deleteSet(setId, workoutId) {
 }
 
 function formatSetMetric(set, type) {
-  const base = type === 'weight' ? `${set.weight} kg` : `${set.reps} Wdh.`;
+  const rp = type === 'reps' && set.rest_pause
+    ? ` <span style="color:var(--accent); white-space:nowrap;">+${escapeHtml(set.rest_pause).split('+').join(' +')} RP</span>`
+    : '';
+  const base = type === 'weight' ? `${set.weight} kg` : `${set.reps} Wdh.${rp}`;
   return `${base}${set.is_bodyweight ? ' <span class="bodyweight-badge">BW</span>' : ''}`;
 }
 
@@ -409,8 +415,11 @@ function startEditSet(setId, weight, reps, workoutId) {
 
   document.getElementById(`setcell-w-${setId}`).innerHTML =
     `<input type="number" class="set-edit-input" id="set-edit-w-${setId}" value="${weight}" min="0" step="2.5" onclick="event.stopPropagation()">`;
+  const rp = row.dataset.rp || '';
   document.getElementById(`setcell-r-${setId}`).innerHTML =
-    `<input type="number" class="set-edit-input" id="set-edit-r-${setId}" value="${reps}" min="0" step="1" onclick="event.stopPropagation()" style="width:44px;">`;
+    `<input type="number" class="set-edit-input" id="set-edit-r-${setId}" value="${reps}" min="0" step="1" onclick="event.stopPropagation()" style="width:44px;">
+     <div style="margin-top:4px; font-size:0.7rem; color:var(--text-muted);">+ Rest-Pause</div>
+     <input type="text" inputmode="numeric" class="set-edit-input" id="set-edit-rp-${setId}" value="${rp}" placeholder="z.B. 2+2" onclick="event.stopPropagation()" style="width:70px;">`;
   document.getElementById(`setcell-v-${setId}`).innerHTML =
     `<span style="display:inline-flex; gap:4px;">
        <button class="btn btn-primary btn-sm" style="padding:2px 8px;" onclick="event.stopPropagation(); saveEditSet(${setId}, ${workoutId})">✓</button>
@@ -426,8 +435,11 @@ async function saveEditSet(setId, workoutId) {
     showToast('Ungültige Werte', 'error');
     return;
   }
+  // Rest-pause: "2+2", "2 2" or "2,2" -> "2+2"; empty clears it
+  const rpRaw = (document.getElementById(`set-edit-rp-${setId}`)?.value || '').trim();
+  const rest_pause = rpRaw ? rpRaw.split(/[^0-9]+/).filter(Boolean).join('+') : '';
   try {
-    await API.put(`/api/workout-sets/${setId}`, { weight, reps });
+    await API.put(`/api/workout-sets/${setId}`, { weight, reps, rest_pause });
     showToast('Satz korrigiert', 'success');
     await refreshDetail(workoutId);
     loadCalendar(); // day volume may have changed

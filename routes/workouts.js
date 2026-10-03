@@ -228,7 +228,9 @@ router.get('/progress/:exercise_id', requireAuth, (req, res) => {
       ws.set_number,
       ws.weight,
       ws.reps,
-      ws.is_bodyweight
+      ws.is_bodyweight,
+      ws.rest_pause,
+      ws.rest_pause_reps
     FROM workout_sets ws
     JOIN workouts w ON w.id = ws.workout_id
     LEFT JOIN session_exercises se ON se.id = ws.session_exercise_id
@@ -266,7 +268,9 @@ router.get('/progress/:exercise_id', requireAuth, (req, res) => {
       : row.weight;
 
     current.max_weight = Math.max(current.max_weight, effWeight);
-    current.total_volume += effWeight * row.reps;
+    // Volume counts every rep actually moved, including rest-pause reps;
+    // the 1RM estimate below uses the continuous main set only.
+    current.total_volume += effWeight * (row.reps + (row.rest_pause_reps || 0));
     current.est_1rm = Math.max(
       current.est_1rm,
       row.reps <= 1 ? effWeight : effWeight * (1.0 + row.reps / 30.0)
@@ -277,6 +281,7 @@ router.get('/progress/:exercise_id', requireAuth, (req, res) => {
       effective_weight: Math.round(effWeight * 10) / 10,
       reps: row.reps,
       is_bodyweight: row.is_bodyweight,
+      ...(row.rest_pause ? { rest_pause: row.rest_pause } : {}),
     });
   }
 
@@ -387,7 +392,7 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
   // workouts are never used as a progression reference), matching the current
   // exercise (guards against stale data from a swapped exercise).
   const lastWorkout = db.prepare(`
-    SELECT w.id
+    SELECT w.id, w.started_at
     FROM workouts w
     JOIN workout_sets ws ON ws.workout_id = w.id
     WHERE ws.session_exercise_id = ?
@@ -401,9 +406,10 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
   `).get(req.params.session_exercise_id, req.session.userId, ...reentryParams, se.exercise_id, se.exercise_id);
 
   let lastSets = [];
+  let lastDate = lastWorkout ? lastWorkout.started_at : null;
   if (lastWorkout) {
     lastSets = db.prepare(`
-      SELECT weight, reps, set_number, rating, is_bodyweight
+      SELECT weight, reps, set_number, rating, is_bodyweight, rest_pause, note
       FROM workout_sets
       WHERE workout_id = ? AND session_exercise_id = ? AND (skipped IS NULL OR skipped = 0)
       ORDER BY set_number ASC
@@ -412,7 +418,7 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
     // Fresh slot (e.g. ad-hoc special workout or newly added plan exercise):
     // fall back to the most recent history of the SAME exercise in any slot.
     const fallback = db.prepare(`
-      SELECT w.id
+      SELECT w.id, w.started_at
       FROM workouts w
       JOIN workout_sets ws ON ws.workout_id = w.id
       JOIN session_exercises se2 ON se2.id = ws.session_exercise_id
@@ -425,8 +431,9 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
     `).get(req.session.userId, se.exercise_id);
 
     if (fallback) {
+      lastDate = fallback.started_at;
       lastSets = db.prepare(`
-        SELECT ws.weight, ws.reps, ws.set_number, ws.rating, ws.is_bodyweight
+        SELECT ws.weight, ws.reps, ws.set_number, ws.rating, ws.is_bodyweight, ws.rest_pause, ws.note
         FROM workout_sets ws
         JOIN session_exercises se2 ON se2.id = ws.session_exercise_id
         WHERE ws.workout_id = ?
@@ -467,7 +474,8 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
       set_plan: buildSetPlan('straight', deloadWeight, deloadSets, se.reps_min, se.reps_max, increment),
       auto_progress: autoProgress,
       last_bodyweight: lastSets.some(set => Number(set.is_bodyweight) === 1),
-      last_sets: lastSets
+      last_sets: lastSets,
+      last_date: lastDate
     });
   }
 
@@ -547,9 +555,18 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
     set_plan: setPlan,
     auto_progress: autoProgress,
     last_bodyweight: lastSets.some(set => Number(set.is_bodyweight) === 1),
-    last_sets: lastSets
+    last_sets: lastSets,
+    last_date: lastDate
   });
 });
+
+// "2+2" / "2 + 2" / [2,2] -> { text: '2+2', sum: 4 }; empty -> null; invalid -> false
+function parseRestPause(v) {
+  if (v === null || v === '' || (Array.isArray(v) && v.length === 0)) return null;
+  const parts = Array.isArray(v) ? v.map(Number) : String(v).split('+').map(x => Number(x.trim()));
+  if (parts.length > 6 || parts.some(n => !Number.isInteger(n) || n < 1 || n > 30)) return false;
+  return { text: parts.join('+'), sum: parts.reduce((a, b) => a + b, 0) };
+}
 
 // PUT /api/workout-sets/:id
 router.put('/workout-sets/:id', requireAuth, (req, res) => {
@@ -561,7 +578,7 @@ router.put('/workout-sets/:id', requireAuth, (req, res) => {
   `).get(req.params.id, req.session.userId);
   if (!set) return res.status(404).json({ error: 'Set not found' });
 
-  const { rating, note, weight, reps } = req.body;
+  const { rating, note, weight, reps, rest_pause } = req.body;
 
   // Optional post-hoc corrections from the history view
   let newWeight = set.weight;
@@ -577,8 +594,19 @@ router.put('/workout-sets/:id', requireAuth, (req, res) => {
     newReps = r;
   }
 
-  db.prepare('UPDATE workout_sets SET rating=?, note=?, weight=?, reps=? WHERE id=?')
-    .run(rating ?? set.rating, note ?? set.note, newWeight, newReps, set.id);
+  // Rest-pause segments ("2+2"): stored as text for display plus their sum
+  // for volume. undefined = untouched, '' / null = cleared.
+  let rpText = set.rest_pause;
+  let rpReps = set.rest_pause_reps;
+  if (rest_pause !== undefined) {
+    const parsed = parseRestPause(rest_pause);
+    if (parsed === false) return res.status(400).json({ error: 'Ungültige Rest-Pause-Angabe' });
+    rpText = parsed ? parsed.text : null;
+    rpReps = parsed ? parsed.sum : null;
+  }
+
+  db.prepare('UPDATE workout_sets SET rating=?, note=?, weight=?, reps=?, rest_pause=?, rest_pause_reps=? WHERE id=?')
+    .run(rating ?? set.rating, note ?? set.note, newWeight, newReps, rpText, rpReps, set.id);
 
   const updated = db.prepare('SELECT * FROM workout_sets WHERE id=?').get(set.id);
   res.json(updated);

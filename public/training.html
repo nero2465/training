@@ -56,6 +56,36 @@
       color: var(--accent);
     }
 
+    /* Last session of this exercise (sets incl. rest-pause + notes) */
+    .last-session {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      text-align: center;
+      margin-top: 6px;
+      line-height: 1.5;
+    }
+    .last-session .ls-sets { color: var(--text-secondary); }
+    .last-session .ls-note {
+      display: block;
+      margin-top: 2px;
+      font-style: italic;
+      color: var(--text-secondary);
+    }
+
+    /* Rest-pause input in the rest overlay */
+    .rp-row { margin-top: 10px; text-align: center; }
+    .rp-label { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 6px; }
+    .rp-controls { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; align-items: center; }
+    .rp-add {
+      border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary);
+      border-radius: 8px; padding: 6px 12px; font-size: 0.9rem; font-weight: 600; cursor: pointer;
+    }
+    .rp-chip {
+      border: 1px solid var(--accent); background: rgba(233,69,96,0.12); color: var(--text-primary);
+      border-radius: 14px; padding: 4px 10px; font-size: 0.85rem; font-weight: 700; cursor: pointer;
+    }
+    .rp-sum { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; min-height: 1em; }
+
     /* Upcoming exercises */
     #upcoming-exercises {
       margin-top: 10px;
@@ -230,6 +260,7 @@
 
         <!-- Recommendation hint -->
         <div class="recommendation-hint" id="recommendation-hint" style="display:none;"></div>
+        <div class="last-session" id="last-session" style="display:none;"></div>
 
         <!-- Warmup ramp (computed, not logged) -->
         <div id="warmup-area" style="display:none; margin-bottom:10px;">
@@ -333,6 +364,16 @@
         <button class="emoji-btn" id="rating-1" onclick="selectRating(1)" title="Zu schwer / nicht geschafft">😤</button>
         <button class="emoji-btn" id="rating-2" onclick="selectRating(2)" title="Geschafft">✅</button>
         <button class="emoji-btn" id="rating-3" onclick="selectRating(3)" title="Zu leicht">💪</button>
+      </div>
+      <div class="rp-row">
+        <div class="rp-label">Rest-Pause nach dem Satz? (zählt fürs Volumen, nicht für die Progression)</div>
+        <div class="rp-controls" id="rp-controls">
+          <span id="rp-chips"></span>
+          <button class="rp-add" onclick="addRestPause(1)">+1</button>
+          <button class="rp-add" onclick="addRestPause(2)">+2</button>
+          <button class="rp-add" onclick="addRestPause(3)">+3</button>
+        </div>
+        <div class="rp-sum" id="rp-sum"></div>
       </div>
       <textarea id="set-note" placeholder="Notiz zum Satz... (optional)" rows="2"
         style="width:100%; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; color:var(--text-primary); padding:8px; font-size:0.85rem; resize:none; margin-top:8px;"></textarea>

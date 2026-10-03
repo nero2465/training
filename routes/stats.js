@@ -51,7 +51,7 @@ router.get('/stats/calendar', requireAuth, (req, res) => {
       w.id as workout_id,
       w.is_deload,
       ps.session_label,
-      SUM(CASE WHEN (ws.skipped IS NULL OR ws.skipped = 0) THEN ws.weight * ws.reps ELSE 0 END) as volume,
+      SUM(CASE WHEN (ws.skipped IS NULL OR ws.skipped = 0) THEN ws.weight * (ws.reps + COALESCE(ws.rest_pause_reps, 0)) ELSE 0 END) as volume,
       COUNT(CASE WHEN (ws.skipped IS NULL OR ws.skipped = 0) THEN 1 END) as set_count
     FROM workouts w
     JOIN plan_sessions ps ON ps.id = w.session_id

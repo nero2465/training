@@ -40,6 +40,7 @@ let skippedSets = {};          // { sessionExerciseId: Set of set numbers skippe
 let recommendedWeights = {};   // { sessionExerciseId: recommended weight } for smart rating pre-select
 let currentIncrement = 2.5;    // step size of the active exercise (drives the +/- buttons)
 let suggestedRating = 2;       // computed from last logged set vs targets
+let rpSegments = [];           // rest-pause reps entered in the rest overlay, e.g. [2, 2]
 let setPlans = {};             // { sessionExerciseId: [{set, weight, reps}] } from scheme/deload
 let deloadActive = false;      // true while the whole workout runs in deload mode
 let plateInventory = null;     // user's plate inventory from settings (null = feature off)
@@ -153,7 +154,8 @@ async function restoreLoggedSets() {
         reps: s.reps,
         is_bodyweight: s.is_bodyweight ? 1 : 0,
         id: s.id,
-        rating: s.rating ?? null
+        rating: s.rating ?? null,
+        rest_pause: s.rest_pause || null
       });
       if (s.is_bodyweight) bodyweightSelections[exId] = true;
     }
@@ -323,6 +325,7 @@ function updateLoggedSetsList(ex) {
 
 async function loadRecommendation(sessionExerciseId) {
   const hint = document.getElementById('recommendation-hint');
+  renderLastSession(null); // never show the previous exercise's history
   try {
     const rec = await API.get(`/api/recommendations/${sessionExerciseId}`);
 
@@ -334,6 +337,7 @@ async function loadRecommendation(sessionExerciseId) {
     }
 
     recommendedWeights[sessionExerciseId] = rec.recommended_weight || 0;
+    if (exercises[currentExerciseIndex]?.id === sessionExerciseId) renderLastSession(rec);
     // Stepper follows the exercise's configured increment (0.5 / 1 / 2.5 ...)
     currentIncrement = rec.increment > 0 ? rec.increment : 2.5;
     applyIncrementToStepper();
@@ -792,6 +796,8 @@ function startRestTimer(afterLastSet) {
   restPaused = false;
   restMinimized = false;
   setSessionPaused(false);
+  rpSegments = [];
+  renderRestPause();
 
   // Pre-select rating based on how the set actually went (Fix: was always 2)
   const noteEl = document.getElementById('set-note');
@@ -893,24 +899,33 @@ async function skipRest() {
 }
 
 async function timerComplete() {
-  // Update local state immediately so bubble colors show regardless of API result
-  if (lastSetId && currentRating !== null) {
+  const restPauseText = rpSegments.length ? rpSegments.join('+') : null;
+
+  // Update local state immediately so bubble colors / set list show regardless of API result
+  if (lastSetId) {
     const ex = exercises[currentExerciseIndex];
     const logged = loggedSets[ex.id] || [];
     const setEntry = logged.find(s => s.id === lastSetId);
     if (setEntry) {
-      setEntry.rating = currentRating;
+      if (currentRating !== null) setEntry.rating = currentRating;
+      if (restPauseText) setEntry.rest_pause = restPauseText;
       buildSetBubbles(ex);
+      updateLoggedSetsList(ex);
     }
   }
 
-  // Persist rating/note to server in background
-  if (lastSetId && (currentRating !== null || document.getElementById('set-note')?.value?.trim())) {
-    const note = document.getElementById('set-note')?.value?.trim() || null;
+  // Persist rating/note/rest-pause to server in background
+  const noteText = document.getElementById('set-note')?.value?.trim() || null;
+  if (lastSetId && (currentRating !== null || noteText || restPauseText)) {
+    const payload = { rating: currentRating, note: noteText };
+    if (restPauseText) payload.rest_pause = restPauseText;
     try {
-      await API.put(`/api/workout-sets/${lastSetId}`, { rating: currentRating, note });
-    } catch(e) { /* ignore rating save errors */ }
+      await API.put(`/api/workout-sets/${lastSetId}`, payload);
+    } catch(e) {
+      if (restPauseText) showToast('Rest-Pause konnte nicht gespeichert werden', 'error');
+    }
   }
+  rpSegments = [];
 
   restMinimized = false;
   setSessionPaused(false); // rest is over -> training time runs again
@@ -1161,7 +1176,68 @@ function escapeHtml(str) {
 
 function formatSetSummary(set) {
   const bwBadge = set.is_bodyweight ? ' <span class="bodyweight-badge">BW</span>' : '';
-  return `${set.weight} kg × ${set.reps} Wdh.${bwBadge}`;
+  const rp = set.rest_pause ? ` <span style="color:var(--accent);">+${set.rest_pause.split('+').join(' +')} RP</span>` : '';
+  return `${set.weight} kg × ${set.reps} Wdh.${rp}${bwBadge}`;
+}
+
+/* ── Rest-pause input (rest overlay) ──────────────────────── */
+
+function addRestPause(n) {
+  if (rpSegments.length >= 6) return;
+  rpSegments.push(n);
+  renderRestPause();
+}
+
+function removeRestPause(i) {
+  rpSegments.splice(i, 1);
+  renderRestPause();
+}
+
+function renderRestPause() {
+  const chips = document.getElementById('rp-chips');
+  const sum = document.getElementById('rp-sum');
+  if (!chips || !sum) return;
+  chips.innerHTML = rpSegments.map((n, i) =>
+    `<button class="rp-chip" onclick="removeRestPause(${i})" title="Entfernen">+${n} ✕</button>`
+  ).join(' ');
+  if (rpSegments.length === 0) {
+    sum.textContent = '';
+    return;
+  }
+  const ex = exercises[currentExerciseIndex];
+  const last = ex && (loggedSets[ex.id] || []).find(x => x.id === lastSetId);
+  const main = last ? last.reps : currentReps;
+  const extra = rpSegments.reduce((a, b) => a + b, 0);
+  sum.textContent = `${main} + ${rpSegments.join(' + ')} = ${main + extra} Wdh. bewegt · Progression zählt ${main}`;
+}
+
+/* ── Last session of this exercise ────────────────────────── */
+
+function renderLastSession(rec) {
+  const el = document.getElementById('last-session');
+  if (!el) return;
+  const sets = rec && rec.last_sets;
+  if (!sets || sets.length === 0) {
+    el.style.display = 'none';
+    el.innerHTML = '';
+    return;
+  }
+  const when = rec.last_date ? new Date(rec.last_date.replace(' ', 'T') + (rec.last_date.includes('Z') ? '' : 'Z'))
+    .toLocaleDateString('de-DE', { day: 'numeric', month: 'short' }) : '';
+  const setTxt = sets.map(x => {
+    const rp = x.rest_pause ? ` +${x.rest_pause}` : '';
+    return `${formatWeight(x.weight)}×${x.reps}${rp}`;
+  }).join(' · ');
+  const notes = sets
+    .filter(x => x.note && x.note.trim())
+    .map(x => `<span class="ls-note">Satz ${x.set_number}: „${escapeHtmlTraining(x.note.trim())}“</span>`)
+    .join('');
+  el.innerHTML = `Letztes Mal${when ? ' (' + when + ')' : ''}: <span class="ls-sets">${setTxt}</span>${notes}`;
+  el.style.display = 'block';
+}
+
+function escapeHtmlTraining(str) {
+  return String(str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 // Prevent accidental navigation away during training
