@@ -162,6 +162,10 @@ function runMigrations() {
     'ALTER TABLE user_settings ADD COLUMN extra_sport_min INTEGER',
     // Explizite Equipment-Zuordnung für den Scheiben-Rechner
     'ALTER TABLE exercises ADD COLUMN equip_type TEXT',
+    // Rest-pause reps after the main set: text for display ("2+2") and the
+    // sum for volume math. Progression only ever reads `reps`.
+    'ALTER TABLE workout_sets ADD COLUMN rest_pause TEXT',
+    'ALTER TABLE workout_sets ADD COLUMN rest_pause_reps INTEGER',
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch(e) { /* column already exists */ }
