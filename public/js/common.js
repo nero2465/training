@@ -2,7 +2,7 @@
    Common Utilities - Shared across all pages
    ============================================================ */
 
-const APP_VERSION = '4.8';
+const APP_VERSION = '4.9';
 
 // API helper
 const API = {
@@ -350,22 +350,14 @@ function computeDumbbellLoadout(target, inv, barWeight, pairMode) {
   if (!inv || target < barWeight) {
     return { achievable: false, actual: barWeight || 0, plates: [], bar: barWeight || 0 };
   }
-  let remaining = target - barWeight;
-  const sizes = Object.keys(inv.plates).map(Number).filter(s => inv.plates[s] > 0).sort((a, b) => b - a);
-  const plates = [];
-  for (const size of sizes) {
-    let count = inv.plates[String(size)] * mult;
-    while (count > 0 && remaining >= size - 1e-9) {
-      plates.push(size);
-      remaining -= size;
-      count--;
-    }
-  }
-  const actual = barWeight + plates.reduce((a, b) => a + b, 0);
+  const counts = {};
+  for (const k of Object.keys(inv.plates)) counts[k] = (inv.plates[k] || 0) * mult;
+  const sol = solvePlates(target - barWeight, counts);
+  const actual = round2(barWeight + sol.sum);
   return {
     achievable: Math.abs(actual - target) < 1e-9,
     actual,
-    plates,
+    plates: sol.plates,
     bar: barWeight
   };
 }
@@ -388,25 +380,77 @@ function computePlateLoadout(target, inv, barWeight) {
   if (!inv || target < bw) {
     return { achievable: false, actual: bw || 0, perSide: [], bar: bw || 0, diff: inv ? target - bw : 0 };
   }
-  let remainingPerSide = (target - bw) / 2;
-  const sizes = Object.keys(inv.plates).map(Number).filter(s => inv.plates[s] > 0).sort((a, b) => b - a);
-  const perSide = [];
-  for (const size of sizes) {
-    let count = inv.plates[String(size)];
-    while (count > 0 && remainingPerSide >= size - 1e-9) {
-      perSide.push(size);
-      remainingPerSide -= size;
-      count--;
-    }
-  }
-  const actual = bw + (perSide.reduce((a, b) => a + b, 0) * 2);
+  // Inventory counts are PER SIDE, so solve one side and mirror it
+  const sol = solvePlates((target - bw) / 2, inv.plates);
+  const actual = round2(bw + sol.sum * 2);
   return {
     achievable: Math.abs(actual - target) < 1e-9,
     actual,
-    perSide,
+    perSide: sol.plates,
     bar: bw,
-    diff: target - actual
+    diff: round2(target - actual)
   };
+}
+
+function round2(v) {
+  return Math.round(v * 100) / 100;
+}
+
+// Exact plate search (bounded subset sum). Which plates — each size usable at
+// most `counts[size]` times — add up to `amount` with as few plates as
+// possible? A greedy "largest plate first" fails on mixed sizes: 16.5 kg is
+// 10 + 5 + 1 + 0.5, but greedy grabs 1.25 after 15 and gets stuck at 16.25.
+// If `amount` cannot be hit exactly, returns the closest total BELOW it.
+// Works in a grid derived from the plate sizes (gcd), so 1.25 / 0.5 / custom
+// sizes stay exact and the table stays tiny.
+function solvePlates(amount, counts) {
+  const SCALE = 100; // centi-kg
+  const sizes = Object.keys(counts)
+    .map(Number)
+    .filter(sz => sz > 0 && (counts[String(sz)] || 0) > 0)
+    .sort((a, b) => b - a);
+  const target = Math.round(amount * SCALE);
+  if (target <= 0 || sizes.length === 0) return { plates: [], sum: 0 };
+
+  const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+  const units = sizes.map(sz => Math.round(sz * SCALE));
+  const g = units.reduce((a, b) => gcd(a, b));
+  const w = units.map(u => u / g);
+  const T = Math.floor(target / g);
+  const n = sizes.length;
+  const INF = 1e9;
+
+  // best[i][x]: fewest plates using the first i sizes to make x; take[i][x]: how many of size i-1
+  const best = [new Int32Array(T + 1).fill(INF)];
+  best[0][0] = 0;
+  const take = [null];
+  for (let i = 1; i <= n; i++) {
+    const cur = new Int32Array(T + 1).fill(INF);
+    const tk = new Int16Array(T + 1);
+    const prev = best[i - 1];
+    const wi = w[i - 1];
+    const maxK = counts[String(sizes[i - 1])];
+    for (let x = 0; x <= T; x++) {
+      // more plates of the heavier size first; strict < keeps the earliest (heaviest) choice on ties
+      for (let k = Math.min(maxK, Math.floor(x / wi)); k >= 0; k--) {
+        const c = prev[x - k * wi];
+        if (c !== INF && c + k < cur[x]) { cur[x] = c + k; tk[x] = k; }
+      }
+    }
+    best.push(cur);
+    take.push(tk);
+  }
+
+  let x = T;
+  while (x > 0 && best[n][x] === INF) x--;
+  const plates = [];
+  for (let i = n, r = x; i >= 1; i--) {
+    const k = take[i][r];
+    for (let j = 0; j < k; j++) plates.push(sizes[i - 1]);
+    r -= k * w[i - 1];
+  }
+  plates.sort((a, b) => b - a);
+  return { plates, sum: round2((x * g) / SCALE) };
 }
 
 function formatPlateLoadout(loadout, inv) {
