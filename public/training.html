@@ -359,6 +359,8 @@
 
     <!-- Set feedback: rating + note -->
     <div class="rest-feedback" id="rest-feedback">
+      <button class="rest-feedback-toggle" id="rest-feedback-toggle" onclick="toggleRestFeedback()" style="display:none;"></button>
+      <div id="rest-feedback-body">
       <div class="feedback-label">Wie war der Satz?</div>
       <div class="feedback-emojis">
         <button class="emoji-btn" id="rating-1" onclick="selectRating(1)" title="Zu schwer / nicht geschafft">😤</button>
@@ -377,6 +379,7 @@
       </div>
       <textarea id="set-note" placeholder="Notiz zum Satz... (optional)" rows="2"
         style="width:100%; background:var(--bg-card); border:1px solid var(--border); border-radius:8px; color:var(--text-primary); padding:8px; font-size:0.85rem; resize:none; margin-top:8px;"></textarea>
+      </div>
     </div>
 
     <!-- Controls -->

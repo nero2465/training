@@ -798,6 +798,9 @@ function startRestTimer(afterLastSet) {
   setSessionPaused(false);
   rpSegments = [];
   renderRestPause();
+  // Set done exactly as planned -> fold rating (auto "ok"), rest-pause and
+  // note away; one tap opens them. Anything off-plan shows them right away.
+  setRestFeedbackCollapsed(setWentAsPlanned());
 
   // Pre-select rating based on how the set actually went (Fix: was always 2)
   const noteEl = document.getElementById('set-note');
@@ -806,8 +809,10 @@ function startRestTimer(afterLastSet) {
 
   updateRestPreview();
 
-  // Show overlay
-  document.getElementById('rest-timer-overlay').classList.remove('hidden');
+  // Show overlay, always from the top (it keeps the previous scroll position otherwise)
+  const overlay = document.getElementById('rest-timer-overlay');
+  overlay.classList.remove('hidden');
+  overlay.scrollTop = 0;
   document.getElementById('rest-toggle-btn').textContent = 'Pause';
 
   // Hide mini badge
@@ -1178,6 +1183,48 @@ function formatSetSummary(set) {
   const bwBadge = set.is_bodyweight ? ' <span class="bodyweight-badge">BW</span>' : '';
   const rp = set.rest_pause ? ` <span style="color:var(--accent);">+${set.rest_pause.split('+').join(' +')} RP</span>` : '';
   return `${set.weight} kg × ${set.reps} Wdh.${rp}${bwBadge}`;
+}
+
+/* ── Compact rest overlay ─────────────────────────────────── */
+
+// True when the last logged set met its target weight AND target reps (from
+// the set plan, else the recommendation and the upper rep bound) and the
+// auto rating is "ok". Over-delivering reps pre-selects "zu leicht", which is
+// worth seeing, so that case stays expanded.
+function setWentAsPlanned() {
+  const ex = exercises[currentExerciseIndex];
+  if (!ex || suggestedRating !== 2) return false;
+  const set = (loggedSets[ex.id] || []).find(x => x.id === lastSetId);
+  if (!set) return false;
+  const plan = setPlans[ex.id];
+  const entry = plan && plan.length ? plan[Math.min(set.set_number - 1, plan.length - 1)] : null;
+  const targetWeight = entry ? entry.weight : (recommendedWeights[ex.id] || 0);
+  const targetReps = entry ? entry.reps : ex.reps_max;
+  return set.weight >= targetWeight - 1e-9 && set.reps >= targetReps;
+}
+
+function setRestFeedbackCollapsed(collapsed) {
+  const body = document.getElementById('rest-feedback-body');
+  const toggle = document.getElementById('rest-feedback-toggle');
+  if (!body || !toggle) return;
+  toggle.dataset.collapsible = collapsed ? '1' : '';
+  if (collapsed) {
+    body.style.display = 'none';
+    toggle.style.display = 'block';
+    toggle.textContent = '✅ Satz wie geplant · Bewertung, Rest-Pause oder Notiz ▾';
+  } else {
+    body.style.display = 'block';
+    toggle.style.display = 'none';
+  }
+}
+
+function toggleRestFeedback() {
+  const body = document.getElementById('rest-feedback-body');
+  const toggle = document.getElementById('rest-feedback-toggle');
+  if (!body || !toggle) return;
+  const open = body.style.display === 'none';
+  body.style.display = open ? 'block' : 'none';
+  toggle.textContent = open ? 'Einklappen ▴' : '✅ Satz wie geplant · Bewertung, Rest-Pause oder Notiz ▾';
 }
 
 /* ── Rest-pause input (rest overlay) ──────────────────────── */
