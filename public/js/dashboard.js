@@ -140,6 +140,24 @@ async function loadDeloadStatus() {
   if (!card) return;
   try {
     const st = await API.get('/api/deload/status');
+
+    if (st.reduced_until && !st.active) {
+      const until = new Date(st.reduced_until).toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' });
+      card.innerHTML = `
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div style="font-size:1.8rem;">🌱</div>
+          <div style="flex:1;">
+            <div style="font-weight:700;">Reduzierte Belastung: ${st.reduced_percent} %</div>
+            <div style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">
+              Bis ${until} — Gewichte = ${st.reduced_percent} % deines letzten regulären Trainings, ohne Progression.
+            </div>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="endReducedPhase()">Beenden</button>
+        </div>`;
+      card.classList.remove('hidden');
+      return;
+    }
+
     if (!st.enabled) { card.classList.add('hidden'); return; }
 
     if (st.active) {
@@ -190,6 +208,7 @@ async function loadDeloadStatus() {
             <div style="font-weight:700;">Wiedereinstieg nach Deload</div>
             <div style="font-size:0.8rem; color:var(--text-muted); margin-top:2px;">
               Diese Woche empfiehlt die App 90 % deiner alten Arbeitsgewichte — ab nächster Woche geht's normal weiter.
+              Noch nicht so weit? Beim Trainingsstart kannst du die 90 % verlängern.
             </div>
           </div>
         </div>`;
@@ -430,13 +449,116 @@ async function toggleSession(sessionId, planName, sessionLabel) {
   }
 }
 
+// ── Start dialog: load for this workout ────────────────────
+// 100 % = normal progression. Below 100 % the weights are that share of the
+// last regular workout and the session never becomes a progression baseline
+// (like the 90 % re-entry after a deload). Optionally kept as a phase.
+
+const LOAD_OPTIONS = [100, 90, 80, 70, 60, 50];
+let pendingStart = null;
+let chosenLoad = 100;
+let chosenScope = 'once';
+let loadStatus = null;
+
 async function startTraining(sessionId, planName, sessionLabel) {
+  pendingStart = { sessionId: parseInt(sessionId), planName, sessionLabel };
   try {
-    const workout = await API.post('/api/workouts/start', { session_id: parseInt(sessionId) });
-    // Store workout info for training page
+    loadStatus = await API.get('/api/deload/status');
+  } catch (e) {
+    loadStatus = null;
+  }
+  // Deload week has its own fixed load — start straight away
+  if (loadStatus && loadStatus.active) return doStart(null, null);
+
+  chosenLoad = (loadStatus && loadStatus.default_load) || 100;
+  chosenScope = 'once';
+  document.getElementById('start-modal-title').textContent = `Training ${sessionLabel} starten`;
+  renderStartModal();
+  document.getElementById('start-modal').classList.add('show');
+}
+
+function closeStartModal() {
+  document.getElementById('start-modal').classList.remove('show');
+  pendingStart = null;
+}
+
+function chip(label, active, onclick) {
+  return `<button class="btn btn-sm ${active ? 'btn-primary' : 'btn-secondary'}" onclick="${onclick}">${label}</button>`;
+}
+
+// End of the current week (Sunday 23:59 local)
+function endOfWeek() {
+  const d = new Date();
+  const toSunday = (7 - d.getDay()) % 7;
+  d.setDate(d.getDate() + toSunday);
+  d.setHours(23, 59, 0, 0);
+  return d;
+}
+
+function scopeUntil(scope) {
+  if (scope === 'week') return endOfWeek();
+  if (scope === '7d') { const d = new Date(); d.setDate(d.getDate() + 7); d.setHours(23, 59, 0, 0); return d; }
+  if (scope === '14d') { const d = new Date(); d.setDate(d.getDate() + 14); d.setHours(23, 59, 0, 0); return d; }
+  return null;
+}
+
+function renderStartModal() {
+  document.getElementById('load-chips').innerHTML =
+    LOAD_OPTIONS.map(p => chip(`${p} %`, p === chosenLoad, `pickLoad(${p})`)).join('');
+
+  const st = loadStatus || {};
+  let hint;
+  if (chosenLoad === 100) {
+    hint = 'Normales Training mit Progression.';
+  } else {
+    hint = `Gewichte = ${chosenLoad} % deines letzten regulären Trainings, keine Steigerung. Zählt nicht als Basis für die nächste Progression.`;
+  }
+  if (st.reduced_until) {
+    const until = new Date(st.reduced_until).toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' });
+    hint += `<br>Aktive Phase: ${st.reduced_percent} % bis ${until}.`;
+  } else if (st.post_deload) {
+    hint += '<br>Diese Woche: Wiedereinstieg nach Deload (Vorschlag 90 %).';
+  }
+  document.getElementById('load-hint').innerHTML = hint;
+
+  // Scope only matters for reduced loads
+  const wrap = document.getElementById('load-scope-wrap');
+  wrap.style.display = chosenLoad < 100 ? 'block' : 'none';
+  const eow = endOfWeek().toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short' });
+  document.getElementById('load-scope').innerHTML = [
+    chip('Nur dieses Training', chosenScope === 'once', "pickScope('once')"),
+    chip(`Bis Sonntag (${eow})`, chosenScope === 'week', "pickScope('week')"),
+    chip('7 Tage', chosenScope === '7d', "pickScope('7d')"),
+    chip('14 Tage', chosenScope === '14d', "pickScope('14d')")
+  ].join('');
+}
+
+function pickLoad(p) { chosenLoad = p; renderStartModal(); }
+function pickScope(s) { chosenScope = s; renderStartModal(); }
+
+async function confirmStart() {
+  const until = chosenLoad < 100 ? scopeUntil(chosenScope) : null;
+  await doStart(chosenLoad, until);
+}
+
+async function doStart(load, phaseUntil) {
+  if (!pendingStart) return;
+  const { sessionId, planName, sessionLabel } = pendingStart;
+  const btn = document.getElementById('start-modal-go');
+  if (btn) btn.disabled = true;
+  try {
+    if (phaseUntil) {
+      await API.post('/api/deload/reduced', { percent: load, until: phaseUntil.toISOString() });
+    } else if (load === 100 && loadStatus && loadStatus.reduced_until) {
+      // Normal training chosen during a phase -> the phase is over
+      await API.post('/api/deload/reduced/end', {});
+    }
+    const body = { session_id: sessionId };
+    if (load !== null) body.load_percent = load;
+    const workout = await API.post('/api/workouts/start', body);
     WorkoutStorage.save({
       workoutId: workout.id,
-      sessionId: parseInt(sessionId),
+      sessionId,
       sessionLabel,
       planName,
       startedAt: new Date().toISOString()
@@ -444,6 +566,18 @@ async function startTraining(sessionId, planName, sessionLabel) {
     window.location.href = '/training.html';
   } catch (e) {
     showToast('Fehler beim Starten: ' + e.message, 'error');
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function endReducedPhase() {
+  try {
+    await API.post('/api/deload/reduced/end', {});
+    showToast('Wieder normale Belastung', 'success');
+    loadDeloadStatus();
+    loadPlans();
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
   }
 }
 

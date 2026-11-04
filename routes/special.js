@@ -134,8 +134,8 @@ router.post('/special/start', requireAuth, (req, res) => {
     exercise_ids.forEach((exId, i) => insertSe.run(sessionId, exId, i));
 
     const wr = db.prepare(
-      'INSERT INTO workouts (user_id, session_id, is_deload) VALUES (?, ?, ?)'
-    ).run(userId, sessionId, deload.active ? 1 : 0);
+      'INSERT INTO workouts (user_id, session_id, is_deload, load_percent) VALUES (?, ?, ?, ?)'
+    ).run(userId, sessionId, deload.active ? 1 : 0, deload.defaultLoad);
 
     return { workout_id: wr.lastInsertRowid, session_id: sessionId, session_label: label };
   });

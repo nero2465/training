@@ -145,6 +145,11 @@ function runMigrations() {
     'ALTER TABLE user_settings ADD COLUMN deload_active_until TEXT',
     'ALTER TABLE user_settings ADD COLUMN last_deload_end TEXT',
     'ALTER TABLE workouts ADD COLUMN is_deload INTEGER DEFAULT 0',
+    // Reduced load: chosen per workout at start (100 = normal), optionally as a
+    // phase until a date (e.g. extended re-entry after deload or illness)
+    'ALTER TABLE workouts ADD COLUMN load_percent INTEGER',
+    'ALTER TABLE user_settings ADD COLUMN reduced_until TEXT',
+    'ALTER TABLE user_settings ADD COLUMN reduced_percent INTEGER',
     'ALTER TABLE session_exercises ADD COLUMN scheme TEXT',
     // Paket 2: Hantelscheiben-Inventar (JSON)
     'ALTER TABLE user_settings ADD COLUMN plate_inventory TEXT',

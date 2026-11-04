@@ -172,6 +172,24 @@
     </main>
 
     <div id="nav-placeholder"></div>
+
+    <!-- Start dialog: choose the load for this workout (reduced re-entry) -->
+    <div class="modal-overlay" id="start-modal">
+      <div class="modal">
+        <div class="modal-header">
+          <h2 class="modal-title" id="start-modal-title">Training starten</h2>
+          <button class="modal-close" onclick="closeStartModal()">×</button>
+        </div>
+        <div style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:8px;">Belastung</div>
+        <div id="load-chips" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:6px;"></div>
+        <div id="load-hint" style="font-size:0.78rem; color:var(--text-muted); min-height:2.4em; margin-bottom:12px;"></div>
+        <div id="load-scope-wrap">
+          <div style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:8px;">Gilt für</div>
+          <div id="load-scope" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px;"></div>
+        </div>
+        <button class="btn btn-primary btn-full" id="start-modal-go" onclick="confirmStart()">Los geht's</button>
+      </div>
+    </div>
   </div>
 
   <script src="/js/common.js"></script>

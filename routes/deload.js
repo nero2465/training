@@ -87,7 +87,25 @@ function resolveDeloadState(db, userId) {
   const postDeload = !active && s.last_deload_end &&
     (now - new Date(s.last_deload_end)) < 7 * 86400000;
 
-  return { settings: s, active, due, weekInCycle, postDeload };
+  // Manual reduced-load phase (extends the 90% re-entry, or eases back in
+  // after illness): every workout started before `reduced_until` defaults to
+  // `reduced_percent`.
+  if (s.reduced_until && new Date(s.reduced_until) < now) {
+    db.prepare('UPDATE user_settings SET reduced_until = NULL, reduced_percent = NULL WHERE user_id = ?').run(userId);
+    s = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(userId);
+  }
+  const reducedPercent = s.reduced_until ? (s.reduced_percent || 90) : null;
+
+  // Default load for a workout started now
+  const defaultLoad = active ? 100 : (reducedPercent || (postDeload ? 90 : 100));
+
+  return { settings: s, active, due, weekInCycle, postDeload, reducedPercent, defaultLoad };
+}
+
+const LOAD_CHOICES = [100, 90, 80, 70, 60, 50];
+function validLoad(v) {
+  const n = parseInt(v, 10);
+  return LOAD_CHOICES.includes(n) ? n : null;
 }
 
 // GET /api/deload/status
@@ -124,6 +142,9 @@ router.get('/deload/status', requireAuth, (req, res) => {
     active_until: s.deload_active_until,
     due: state.due,
     post_deload: state.postDeload,
+    reduced_until: s.reduced_until || null,
+    reduced_percent: state.reducedPercent,
+    default_load: state.defaultLoad,
     early_warning: earlyWarning
   });
 });
@@ -149,6 +170,30 @@ router.post('/deload/end', requireAuth, (req, res) => {
     WHERE user_id = ?
   `).run(now, now, req.session.userId);
   res.json({ active: false });
+});
+
+// POST /api/deload/reduced { percent, until } — start/replace a reduced phase
+router.post('/deload/reduced', requireAuth, (req, res) => {
+  const pct = validLoad(req.body.percent);
+  const until = new Date(req.body.until);
+  if (!pct || pct >= 100) return res.status(400).json({ error: 'Ungültige Belastung' });
+  if (isNaN(until) || until <= new Date() || until - new Date() > 60 * 86400000) {
+    return res.status(400).json({ error: 'Ungültiges Enddatum' });
+  }
+  const db = getDb();
+  getOrCreateSettings(db, req.session.userId);
+  db.prepare('UPDATE user_settings SET reduced_until = ?, reduced_percent = ? WHERE user_id = ?')
+    .run(until.toISOString(), pct, req.session.userId);
+  res.json({ reduced_until: until.toISOString(), reduced_percent: pct });
+});
+
+// POST /api/deload/reduced/end — back to normal load
+router.post('/deload/reduced/end', requireAuth, (req, res) => {
+  const db = getDb();
+  getOrCreateSettings(db, req.session.userId);
+  db.prepare('UPDATE user_settings SET reduced_until = NULL, reduced_percent = NULL WHERE user_id = ?')
+    .run(req.session.userId);
+  res.json({ reduced_until: null });
 });
 
 // GET /api/rotation-hints — exercises trained continuously for 8+ weeks,
@@ -205,4 +250,4 @@ router.get('/rotation-hints', requireAuth, (req, res) => {
   res.json(hints);
 });
 
-module.exports = { router, resolveDeloadState };
+module.exports = { router, resolveDeloadState, validLoad };
