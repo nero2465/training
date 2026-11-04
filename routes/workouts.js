@@ -28,12 +28,19 @@ router.post('/workouts/start', requireAuth, (req, res) => {
 
   // Tag workouts logged during an active deload week so they never feed
   // the progression reference.
-  const { resolveDeloadState } = require('./deload');
+  const { resolveDeloadState, validLoad } = require('./deload');
   const deload = resolveDeloadState(db, req.session.userId);
 
+  // Load for this workout: explicit choice from the start dialog, else the
+  // default (reduced phase / post-deload 90% / 100). Ignored in a deload week,
+  // which has its own fixed percentage.
+  let load = req.body.load_percent !== undefined ? validLoad(req.body.load_percent) : deload.defaultLoad;
+  if (!load) return res.status(400).json({ error: 'Ungültige Belastung' });
+  if (deload.active) load = 100;
+
   const result = db.prepare(
-    'INSERT INTO workouts (user_id, session_id, is_deload) VALUES (?, ?, ?)'
-  ).run(req.session.userId, session_id, deload.active ? 1 : 0);
+    'INSERT INTO workouts (user_id, session_id, is_deload, load_percent) VALUES (?, ?, ?, ?)'
+  ).run(req.session.userId, session_id, deload.active ? 1 : 0, load);
 
   const workout = db.prepare('SELECT * FROM workouts WHERE id = ?').get(result.lastInsertRowid);
   res.status(201).json(workout);
@@ -373,6 +380,15 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
   const scheme = se.scheme || 'straight';
   const deload = resolveDeloadState(db, req.session.userId);
 
+  // Load in effect: the running workout's own choice (?workout_id=), else the
+  // default for a workout started now (reduced phase / post-deload / 100).
+  let loadPercent = deload.defaultLoad;
+  if (req.query.workout_id) {
+    const w = db.prepare('SELECT load_percent FROM workouts WHERE id = ? AND user_id = ?')
+      .get(req.query.workout_id, req.session.userId);
+    if (w && w.load_percent) loadPercent = w.load_percent;
+  }
+
   // The 90% post-deload re-entry week is a deliberate light week — it must not
   // become the progression baseline, otherwise the following week would build
   // on 90% instead of returning to the pre-deload weight. So workouts started
@@ -383,8 +399,10 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
   const reentryEnd = lastDeloadEnd
     ? new Date(new Date(lastDeloadEnd).getTime() + 7 * 86400000).toISOString()
     : null;
+  // Workouts tagged with a load (since 4.10) decide by their tag; the window
+  // only applies to older, untagged ones.
   const excludeReentry = lastDeloadEnd
-    ? 'AND NOT (w.started_at >= ? AND w.started_at < ?)'
+    ? 'AND NOT (w.load_percent IS NULL AND w.started_at >= ? AND w.started_at < ?)'
     : '';
   const reentryParams = lastDeloadEnd ? [lastDeloadEnd, reentryEnd] : [];
 
@@ -399,6 +417,7 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
       AND w.user_id = ?
       AND w.ended_at IS NOT NULL
       AND (w.is_deload IS NULL OR w.is_deload = 0)
+      AND (w.load_percent IS NULL OR w.load_percent >= 100)
       ${excludeReentry}
       AND COALESCE(ws.exercise_id_snapshot, ?) = ?
     ORDER BY w.started_at DESC
@@ -425,6 +444,7 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
       WHERE w.user_id = ?
         AND w.ended_at IS NOT NULL
         AND (w.is_deload IS NULL OR w.is_deload = 0)
+        AND (w.load_percent IS NULL OR w.load_percent >= 100)
         AND COALESCE(ws.exercise_id_snapshot, se2.exercise_id) = ?
       ORDER BY w.started_at DESC
       LIMIT 1
@@ -504,10 +524,11 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
   const lastTooEasy = lastRating === 3 && !anyTooHard;
   const jump = lastTooEasy ? increment * 2 : increment;
 
-  if (deload.postDeload) {
-    // First week after a deload: re-enter at ~90% of pre-deload weight
-    topWeight = roundPlate(maxWeight * 0.9, increment);
-    reason = 'post_deload';
+  if (loadPercent < 100) {
+    // Reduced load (post-deload re-entry, manual phase or per-workout choice):
+    // a share of the last REGULAR weight, no progression.
+    topWeight = roundPlate(maxWeight * loadPercent / 100, increment);
+    reason = deload.postDeload && loadPercent === 90 && !deload.reducedPercent ? 'post_deload' : 'reduced';
   } else if (autoProgress) {
     if (scheme === 'double_progression') {
       // First grow reps to reps_max on ALL sets, only then add weight
@@ -552,6 +573,7 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
     scheme,
     deload: false,
     post_deload: !!deload.postDeload,
+    load_percent: loadPercent,
     set_plan: setPlan,
     auto_progress: autoProgress,
     last_bodyweight: lastSets.some(set => Number(set.is_bodyweight) === 1),

@@ -327,7 +327,7 @@ async function loadRecommendation(sessionExerciseId) {
   const hint = document.getElementById('recommendation-hint');
   renderLastSession(null); // never show the previous exercise's history
   try {
-    const rec = await API.get(`/api/recommendations/${sessionExerciseId}`);
+    const rec = await API.get(`/api/recommendations/${sessionExerciseId}?workout_id=${workoutId}`);
 
     const hasBodyweightSelection = Object.prototype.hasOwnProperty.call(bodyweightSelections, sessionExerciseId);
     if (!hasBodyweightSelection) {
@@ -433,6 +433,8 @@ function recommendationReasonText(rec) {
       return `<span style="color:var(--text-muted);">(halten — Wdh.-Ziel noch nicht erreicht)</span>`;
     case 'deload':
       return `<span style="color:var(--accent);">(Deload — Erholungswoche)</span>`;
+    case 'reduced':
+      return `<span style="color:var(--accent);">(${rec.load_percent} % — reduzierte Belastung 🌱)</span>`;
     case 'post_deload':
       return `<span style="color:var(--accent);">(90 % — Wiedereinstieg nach Deload 🌱)</span>`;
     default:
@@ -778,7 +780,7 @@ function updateRestPreview() {
   nextInfo.style.display = 'block';
   const base = `${next.name} — ${next.sets}×${repsLabel(next.reps_min, next.reps_max)}`;
   nextNameEl.textContent = base;
-  API.get(`/api/recommendations/${next.id}`).then(rec => {
+  API.get(`/api/recommendations/${next.id}?workout_id=${workoutId}`).then(rec => {
     // Guard: the user may have moved on while this was in flight
     if (exercises[currentExerciseIndex + 1]?.id !== next.id) return;
     const sets = rec.sets_override || next.sets;
