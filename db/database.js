@@ -148,6 +148,7 @@ function runMigrations() {
     // Reduced load: chosen per workout at start (100 = normal), optionally as a
     // phase until a date (e.g. extended re-entry after deload or illness)
     'ALTER TABLE workouts ADD COLUMN load_percent INTEGER',
+    'ALTER TABLE body_metrics ADD COLUMN neck REAL',
     'ALTER TABLE user_settings ADD COLUMN reduced_until TEXT',
     'ALTER TABLE user_settings ADD COLUMN reduced_percent INTEGER',
     'ALTER TABLE session_exercises ADD COLUMN scheme TEXT',
