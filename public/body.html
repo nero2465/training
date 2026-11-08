@@ -68,6 +68,10 @@
               <div><label class="form-label" style="font-size:0.75rem;">Oberarm (cm)</label><input type="number" class="form-control" id="new-arm" step="0.5" min="15" max="70"></div>
               <div><label class="form-label" style="font-size:0.75rem;">Hals (cm)</label><input type="number" class="form-control" id="new-neck" step="0.5" min="20" max="70"></div>
             </div>
+            <div class="body-grid-2" style="margin-top:8px;">
+              <div><label class="form-label" style="font-size:0.75rem;">Hüfte (cm)</label><input type="number" class="form-control" id="new-hip" step="0.5" min="50" max="200"></div>
+              <div style="font-size:0.7rem; color:var(--text-muted); align-self:end; padding-bottom:6px;">Taille + Hals (Frauen: + Hüfte) → Körperfett-Schätzung</div>
+            </div>
           </div>
         </div>
       </div>
@@ -80,6 +84,12 @@
         <div style="position:relative; height:200px;"><canvas id="weight-chart"></canvas></div>
         <div id="metric-list" style="margin-top:10px;"></div>
         <button class="btn btn-ghost btn-sm" id="metric-more" onclick="toggleAllMetrics()" style="display:none; width:100%; color:var(--text-muted); margin-top:4px;"></button>
+      </div>
+
+      <!-- Body fat estimate -->
+      <div class="card" style="margin-top:12px;" id="bf-card">
+        <div class="card-title">Körperfett (Schätzung)</div>
+        <div id="bf-content" style="font-size:0.85rem;"></div>
       </div>
 
       <!-- Nutrition -->

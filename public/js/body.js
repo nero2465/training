@@ -14,8 +14,122 @@ const METRICS = [
   { key: 'waist',  label: 'Taille',  unit: 'cm', color: '#f59e0b' },
   { key: 'chest',  label: 'Brust',   unit: 'cm', color: '#a78bfa' },
   { key: 'arm',    label: 'Oberarm', unit: 'cm', color: '#34d399' },
-  { key: 'neck',   label: 'Hals',    unit: 'cm', color: '#f472b6' }
+  { key: 'neck',   label: 'Hals',    unit: 'cm', color: '#f472b6' },
+  { key: 'hip',    label: 'Hüfte',   unit: 'cm', color: '#fb923c' },
+  // Derived: US-Navy body fat per entry (needs waist + neck, women also hip)
+  { key: 'bf',     label: 'KFA',     unit: '%',  color: '#e94560', derived: true }
 ];
+
+// Value of a metric for one entry (derived ones computed on the fly)
+function metricValue(m, key) {
+  if (key === 'bf') {
+    const v = navyBodyFat(m.waist, m.neck, m.hip, bodySettings && bodySettings.height_cm, bodySettings && bodySettings.sex);
+    return v === null ? null : Math.round(v * 10) / 10;
+  }
+  return m[key];
+}
+
+/* ── Body fat estimates ───────────────────────────────────── */
+
+// US-Navy circumference method (Hodgdon & Beckett), metric form.
+// Typical error vs. DEXA about ±3–4 %-points; best for following a trend.
+function navyBodyFat(waist, neck, hip, height, sex) {
+  if (!waist || !neck || !height || !sex) return null;
+  let bf;
+  if (sex === 'm') {
+    if (waist - neck <= 0) return null;
+    bf = 495 / (1.0324 - 0.19077 * Math.log10(waist - neck) + 0.15456 * Math.log10(height)) - 450;
+  } else {
+    if (!hip || waist + hip - neck <= 0) return null;
+    bf = 495 / (1.29579 - 0.35004 * Math.log10(waist + hip - neck) + 0.22100 * Math.log10(height)) - 450;
+  }
+  return bf > 2 && bf < 70 ? bf : null;
+}
+
+// Deurenberg (1991): from BMI, age and sex — no tape needed, but blind to
+// muscle mass (overestimates for strength athletes).
+function deurenbergBodyFat(weight, height, age, sex) {
+  if (!weight || !height || !age || !sex) return null;
+  const bmi = weight / Math.pow(height / 100, 2);
+  return 1.2 * bmi + 0.23 * age - 10.8 * (sex === 'm' ? 1 : 0) - 5.4;
+}
+
+// YMCA formula: weight + waist only
+function ymcaBodyFat(weight, waist, sex) {
+  if (!weight || !waist || !sex) return null;
+  const lb = weight * 2.20462, inch = waist / 2.54;
+  const bf = (4.15 * inch - 0.082 * lb - (sex === 'm' ? 98.42 : 76.76)) / lb * 100;
+  return bf > 2 && bf < 70 ? bf : null;
+}
+
+// ACE categories
+function bfCategory(bf, sex) {
+  const t = sex === 'm' ? [6, 14, 18, 25] : [14, 21, 25, 32];
+  if (bf < t[0]) return 'essentielles Fett';
+  if (bf < t[1]) return 'athletisch';
+  if (bf < t[2]) return 'fit';
+  if (bf < t[3]) return 'durchschnittlich';
+  return 'erhöht';
+}
+
+// Latest non-empty value of a field plus its day
+function latestField(key) {
+  for (let i = bodyMetrics.length - 1; i >= 0; i--) {
+    if (bodyMetrics[i][key]) return { v: bodyMetrics[i][key], day: metricDay(bodyMetrics[i]) };
+  }
+  return null;
+}
+
+function renderBodyFat() {
+  const el = document.getElementById('bf-content');
+  if (!el) return;
+  const s = bodySettings || {};
+  const age = s.birth_year ? new Date().getFullYear() - s.birth_year : null;
+  const w = latestField('weight'), waist = latestField('waist'), neck = latestField('neck'), hip = latestField('hip');
+  const fmt = v => v.toFixed(1).replace('.', ',');
+
+  const missing = [];
+  if (!s.height_cm) missing.push('Größe');
+  if (!s.sex) missing.push('Geschlecht');
+  if (!waist) missing.push('Taille');
+  if (!neck) missing.push('Hals');
+  if (s.sex === 'w' && !hip) missing.push('Hüfte');
+
+  const navy = navyBodyFat(waist && waist.v, neck && neck.v, hip && hip.v, s.height_cm, s.sex);
+  const deur = deurenbergBodyFat(w && w.v, s.height_cm, age, s.sex);
+  const ymca = ymcaBodyFat(w && w.v, waist && waist.v, s.sex);
+
+  let html = '';
+  if (navy !== null) {
+    const fatKg = w ? w.v * navy / 100 : null;
+    html += `
+      <div style="display:flex; align-items:baseline; gap:10px;">
+        <div style="font-size:2rem; font-weight:800; color:var(--accent);">${fmt(navy)} %</div>
+        <div style="color:var(--text-secondary);">${bfCategory(navy, s.sex)}</div>
+      </div>
+      <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:8px;">US-Navy-Methode (Umfänge + Größe)</div>
+      ${fatKg !== null ? `<div style="margin-bottom:8px;">Fettmasse <strong>${fmt(fatKg)} kg</strong> · fettfreie Masse <strong>${fmt(w.v - fatKg)} kg</strong></div>` : ''}`;
+  } else {
+    html += `<div style="color:var(--text-muted); margin-bottom:8px;">Für die genauere Schätzung (US-Navy) fehlt: <strong>${missing.join(', ')}</strong>.
+      ${!waist || !neck || (s.sex === 'w' && !hip) ? 'Unter „Umfänge erfassen" eintragen.' : 'Im Profil unten ergänzen.'}</div>`;
+  }
+
+  const rows = [];
+  if (ymca !== null) rows.push(`YMCA (Gewicht + Taille): <strong>${fmt(ymca)} %</strong>`);
+  if (deur !== null) rows.push(`Deurenberg (BMI + Alter): <strong>${fmt(deur)} %</strong> — überschätzt bei viel Muskelmasse`);
+  if (rows.length) html += `<div style="font-size:0.8rem; color:var(--text-secondary); line-height:1.6;">${navy !== null ? 'Zum Vergleich:<br>' : ''}${rows.join('<br>')}</div>`;
+
+  if (!html.trim() || (navy === null && rows.length === 0)) {
+    html = `<div style="color:var(--text-muted);">Trage Gewicht, Taille und Hals ein und fülle dein Profil (Größe, Geschlecht, Geburtsjahr) aus.</div>`;
+  } else {
+    const src = [waist, neck].filter(Boolean).map(x => x.day).sort();
+    html += `<div style="font-size:0.72rem; color:var(--text-muted); margin-top:8px; line-height:1.5;">
+      Schätzungen, keine Messung — Abweichung zur DEXA-Messung typisch ±3–4 Prozentpunkte. Aussagekräftig ist vor allem der <strong>Verlauf</strong>
+      (im Diagramm unter „KFA"). Taille auf Höhe des Bauchnabels, Hals unterhalb des Kehlkopfs messen${s.sex === 'w' ? ', Hüfte an der breitesten Stelle' : ''}.
+      ${src.length && navy !== null ? `<br>Grundlage: Umfänge vom ${fmtDay(src[src.length - 1], true)}.` : ''}</div>`;
+  }
+  el.innerHTML = html;
+}
 
 // Local calendar day "YYYY-MM-DD" (not UTC)
 function todayStr() {
@@ -61,6 +175,7 @@ async function init() {
     renderChart();
     renderMetricList();
     renderNutrition();
+    renderBodyFat();
     renderHrZones();
   } catch (e) {
     showToast('Fehler beim Laden: ' + e.message, 'error');
@@ -123,6 +238,8 @@ function saveProfile() {
       showToast('Profil gespeichert', 'success');
       fillProfileForm();
       renderNutrition();
+      renderBodyFat();
+      renderChart(); // KFA series depends on height and sex
       renderHrZones();
     } catch (e) {
       showToast('Fehler: ' + e.message, 'error');
@@ -163,7 +280,7 @@ function resetDateField() {
 
 async function addWeight() {
   const payload = {};
-  const ids = { weight: 'new-weight', waist: 'new-waist', chest: 'new-chest', arm: 'new-arm', neck: 'new-neck' };
+  const ids = { weight: 'new-weight', waist: 'new-waist', chest: 'new-chest', arm: 'new-arm', neck: 'new-neck', hip: 'new-hip' };
   for (const [k, id] of Object.entries(ids)) payload[k] = document.getElementById(id)?.value || '';
 
   if (Object.values(payload).every(v => !v)) {
@@ -179,7 +296,7 @@ async function addWeight() {
     bodyMetrics.push(row);
     sortMetrics();
     // Girth fields clear, weight stays visible as the new baseline
-    ['new-waist', 'new-chest', 'new-arm', 'new-neck'].forEach(id => {
+    ['new-waist', 'new-chest', 'new-arm', 'new-neck', 'new-hip'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.value = '';
     });
@@ -189,6 +306,7 @@ async function addWeight() {
     renderChart();
     renderMetricList();
     renderNutrition();
+    renderBodyFat();
   } catch (e) {
     showToast('Fehler: ' + e.message, 'error');
   }
@@ -204,6 +322,7 @@ async function deleteMetric(id) {
     renderChart();
     renderMetricList();
     renderNutrition();
+    renderBodyFat();
   } catch (e) {
     showToast('Fehler: ' + e.message, 'error');
   }
@@ -220,7 +339,7 @@ function latestWeight() {
 
 function renderChart() {
   const card = document.getElementById('weight-chart-card');
-  const available = METRICS.filter(mt => bodyMetrics.some(m => m[mt.key]));
+  const available = METRICS.filter(mt => bodyMetrics.some(m => metricValue(m, mt.key)));
   if (available.length === 0) { card.style.display = 'none'; return; }
   card.style.display = 'block';
   if (!available.some(mt => mt.key === chartMetric)) chartMetric = available[0].key;
@@ -232,15 +351,15 @@ function renderChart() {
         onclick="selectChartMetric('${mt.key}')">${mt.label}</button>`).join('')
     : '';
 
-  const points = bodyMetrics.filter(m => m[metric.key]);
-  const first = points[0][metric.key], last = points[points.length - 1][metric.key];
+  const points = bodyMetrics.filter(m => metricValue(m, metric.key));
+  const first = metricValue(points[0], metric.key), last = metricValue(points[points.length - 1], metric.key);
   const diff = Math.round((last - first) * 10) / 10;
   document.getElementById('metric-change').textContent = points.length > 1
-    ? `${metric.label}: ${last} ${metric.unit} · ${diff > 0 ? '+' : ''}${diff} ${metric.unit} seit ${fmtDay(metricDay(points[0]), true)}`
+    ? `${metric.label}: ${last} ${metric.unit} · ${diff > 0 ? '+' : ''}${diff} ${metric.key === 'bf' ? 'Prozentpunkte' : metric.unit} seit ${fmtDay(metricDay(points[0]), true)}`
     : `${metric.label}: ${last} ${metric.unit}`;
 
   const labels = points.map(m => fmtDay(metricDay(m), false));
-  const data = points.map(m => m[metric.key]);
+  const data = points.map(m => metricValue(m, metric.key));
 
   if (weightChart) weightChart.destroy();
   weightChart = new Chart(document.getElementById('weight-chart'), {
@@ -293,6 +412,7 @@ function renderMetricList() {
     if (m.chest) parts.push(`Brust ${m.chest}`);
     if (m.arm) parts.push(`Arm ${m.arm}`);
     if (m.neck) parts.push(`Hals ${m.neck}`);
+    if (m.hip) parts.push(`Hüfte ${m.hip}`);
     return `
       <div class="metric-row" onclick="editMetric(${m.id})" style="cursor:pointer;" title="Antippen zum Bearbeiten">
         <span style="color:var(--text-muted); font-size:0.78rem; width:74px;">${fmtDay(metricDay(m), true)}</span>
@@ -322,6 +442,7 @@ function renderMetricEditor(m) {
         ${field('chest', 'Brust (cm)', '0.5')}
         ${field('arm', 'Oberarm (cm)', '0.5')}
         ${field('neck', 'Hals (cm)', '0.5')}
+        ${field('hip', 'Hüfte (cm)', '0.5')}
       </div>
       <div style="display:flex; gap:8px; margin-top:8px;">
         <button class="btn btn-primary btn-sm" style="flex:1;" onclick="saveMetric(${m.id})">Speichern</button>
@@ -342,8 +463,9 @@ function cancelEditMetric() {
 
 async function saveMetric(id) {
   const payload = { date: document.getElementById('edit-date').value };
-  for (const mt of METRICS) payload[mt.key] = document.getElementById(`edit-${mt.key}`).value;
-  if (METRICS.every(mt => !payload[mt.key])) {
+  const editable = METRICS.filter(mt => !mt.derived);
+  for (const mt of editable) payload[mt.key] = document.getElementById(`edit-${mt.key}`).value;
+  if (editable.every(mt => !payload[mt.key])) {
     showToast('Mindestens ein Wert erforderlich', 'error');
     return;
   }
@@ -357,6 +479,7 @@ async function saveMetric(id) {
     renderChart();
     renderMetricList();
     renderNutrition();
+    renderBodyFat();
   } catch (e) {
     showToast('Fehler: ' + e.message, 'error');
   }
