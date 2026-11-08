@@ -2,7 +2,7 @@
    Common Utilities - Shared across all pages
    ============================================================ */
 
-const APP_VERSION = '4.10';
+const APP_VERSION = '4.11';
 
 // API helper
 const API = {

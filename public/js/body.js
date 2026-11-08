@@ -5,6 +5,37 @@
 let bodySettings = null;
 let bodyMetrics = [];
 let weightChart = null;
+let chartMetric = 'weight';   // which series the chart shows
+let showAllMetrics = false;   // list: last 5 vs. all entries
+let editingMetricId = null;
+
+const METRICS = [
+  { key: 'weight', label: 'Gewicht', unit: 'kg', color: '#60a5fa' },
+  { key: 'waist',  label: 'Taille',  unit: 'cm', color: '#f59e0b' },
+  { key: 'chest',  label: 'Brust',   unit: 'cm', color: '#a78bfa' },
+  { key: 'arm',    label: 'Oberarm', unit: 'cm', color: '#34d399' },
+  { key: 'neck',   label: 'Hals',    unit: 'cm', color: '#f472b6' }
+];
+
+// Local calendar day "YYYY-MM-DD" (not UTC)
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Day of a stored entry, as stored (no time-zone shifting)
+function metricDay(m) {
+  return String(m.measured_at).slice(0, 10);
+}
+
+function fmtDay(day, withYear) {
+  return new Date(day + 'T12:00:00').toLocaleDateString('de-DE',
+    withYear ? { day: 'numeric', month: 'short', year: '2-digit' } : { day: 'numeric', month: 'short' });
+}
+
+function sortMetrics() {
+  bodyMetrics.sort((a, b) => String(a.measured_at).localeCompare(String(b.measured_at)) || a.id - b.id);
+}
 let weeklyTrainingMin = 0; // Ø minutes/week from logged workouts + cardio (last 4 weeks)
 
 async function init() {
@@ -26,6 +57,7 @@ async function init() {
 
     fillProfileForm();
     prefillWeightField();
+    resetDateField();
     renderChart();
     renderMetricList();
     renderNutrition();
@@ -124,27 +156,36 @@ function prefillWeightField() {
   if (w) document.getElementById('new-weight').value = w;
 }
 
-async function addWeight() {
-  const weight = document.getElementById('new-weight').value;
-  const waist = document.getElementById('new-waist')?.value;
-  const chest = document.getElementById('new-chest')?.value;
-  const arm = document.getElementById('new-arm')?.value;
+function resetDateField() {
+  const el = document.getElementById('new-date');
+  if (el) { el.value = todayStr(); el.max = todayStr(); }
+}
 
-  if (!weight && !waist && !chest && !arm) {
+async function addWeight() {
+  const payload = {};
+  const ids = { weight: 'new-weight', waist: 'new-waist', chest: 'new-chest', arm: 'new-arm', neck: 'new-neck' };
+  for (const [k, id] of Object.entries(ids)) payload[k] = document.getElementById(id)?.value || '';
+
+  if (Object.values(payload).every(v => !v)) {
     showToast('Bitte mindestens einen Wert eintragen', 'error');
     return;
   }
+  // Only send a date when it is not today -> today keeps the real time
+  const date = document.getElementById('new-date')?.value;
+  if (date && date !== todayStr()) payload.date = date;
 
   try {
-    const row = await API.post('/api/body-metrics', { weight, waist, chest, arm });
+    const row = await API.post('/api/body-metrics', payload);
     bodyMetrics.push(row);
+    sortMetrics();
     // Girth fields clear, weight stays visible as the new baseline
-    ['new-waist', 'new-chest', 'new-arm'].forEach(id => {
+    ['new-waist', 'new-chest', 'new-arm', 'new-neck'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.value = '';
     });
     prefillWeightField();
-    showToast('Gespeichert 📏', 'success');
+    resetDateField();
+    showToast(payload.date ? `Gespeichert für ${fmtDay(payload.date, true)} 📏` : 'Gespeichert 📏', 'success');
     renderChart();
     renderMetricList();
     renderNutrition();
@@ -179,13 +220,27 @@ function latestWeight() {
 
 function renderChart() {
   const card = document.getElementById('weight-chart-card');
-  const weightPoints = bodyMetrics.filter(m => m.weight);
-  if (weightPoints.length === 0) { card.style.display = 'none'; return; }
+  const available = METRICS.filter(mt => bodyMetrics.some(m => m[mt.key]));
+  if (available.length === 0) { card.style.display = 'none'; return; }
   card.style.display = 'block';
+  if (!available.some(mt => mt.key === chartMetric)) chartMetric = available[0].key;
+  const metric = METRICS.find(mt => mt.key === chartMetric);
 
-  const labels = weightPoints.map(m =>
-    new Date(m.measured_at).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' }));
-  const data = weightPoints.map(m => m.weight);
+  // Chips only when there is more than one series to choose from
+  document.getElementById('metric-chips').innerHTML = available.length > 1
+    ? available.map(mt => `<button class="btn btn-sm ${mt.key === chartMetric ? 'btn-primary' : 'btn-secondary'}"
+        onclick="selectChartMetric('${mt.key}')">${mt.label}</button>`).join('')
+    : '';
+
+  const points = bodyMetrics.filter(m => m[metric.key]);
+  const first = points[0][metric.key], last = points[points.length - 1][metric.key];
+  const diff = Math.round((last - first) * 10) / 10;
+  document.getElementById('metric-change').textContent = points.length > 1
+    ? `${metric.label}: ${last} ${metric.unit} · ${diff > 0 ? '+' : ''}${diff} ${metric.unit} seit ${fmtDay(metricDay(points[0]), true)}`
+    : `${metric.label}: ${last} ${metric.unit}`;
+
+  const labels = points.map(m => fmtDay(metricDay(m), false));
+  const data = points.map(m => m[metric.key]);
 
   if (weightChart) weightChart.destroy();
   weightChart = new Chart(document.getElementById('weight-chart'), {
@@ -193,10 +248,10 @@ function renderChart() {
     data: {
       labels,
       datasets: [{
-        label: 'Gewicht (kg)',
+        label: `${metric.label} (${metric.unit})`,
         data,
-        borderColor: '#60a5fa',
-        backgroundColor: 'rgba(96,165,250,0.12)',
+        borderColor: metric.color,
+        backgroundColor: metric.color + '1f',
         fill: true,
         tension: 0.3,
         pointRadius: 3
@@ -214,24 +269,97 @@ function renderChart() {
   });
 }
 
+function selectChartMetric(key) {
+  chartMetric = key;
+  renderChart();
+}
+
+function toggleAllMetrics() {
+  showAllMetrics = !showAllMetrics;
+  renderMetricList();
+}
+
 function renderMetricList() {
   const list = document.getElementById('metric-list');
   if (!list) return;
-  const recent = [...bodyMetrics].reverse().slice(0, 5);
-  list.innerHTML = recent.map(m => {
-    const d = new Date(m.measured_at).toLocaleDateString('de-DE', { day: 'numeric', month: 'short', year: '2-digit' });
+  const all = [...bodyMetrics].reverse();
+  const shown = showAllMetrics ? all : all.slice(0, 5);
+
+  list.innerHTML = shown.map(m => {
+    if (m.id === editingMetricId) return renderMetricEditor(m);
     const parts = [];
     if (m.weight) parts.push(`<strong>${m.weight} kg</strong>`);
     if (m.waist) parts.push(`Taille ${m.waist}`);
     if (m.chest) parts.push(`Brust ${m.chest}`);
     if (m.arm) parts.push(`Arm ${m.arm}`);
+    if (m.neck) parts.push(`Hals ${m.neck}`);
     return `
-      <div class="metric-row">
-        <span style="color:var(--text-muted); font-size:0.78rem; width:74px;">${d}</span>
+      <div class="metric-row" onclick="editMetric(${m.id})" style="cursor:pointer;" title="Antippen zum Bearbeiten">
+        <span style="color:var(--text-muted); font-size:0.78rem; width:74px;">${fmtDay(metricDay(m), true)}</span>
         <span style="flex:1;">${parts.join(' · ')}</span>
-        <button class="btn btn-ghost btn-sm" onclick="deleteMetric(${m.id})" style="padding:2px 6px; color:var(--text-muted);">×</button>
+        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); deleteMetric(${m.id})" style="padding:2px 6px; color:var(--text-muted);">×</button>
       </div>`;
-  }).join('');
+  }).join('') + (all.length ? '<div style="font-size:0.72rem; color:var(--text-muted); margin-top:4px;">✏️ Eintrag antippen zum Bearbeiten (auch Datum)</div>' : '');
+
+  const more = document.getElementById('metric-more');
+  if (more) {
+    more.style.display = all.length > 5 ? 'block' : 'none';
+    more.textContent = showAllMetrics ? 'Weniger anzeigen ▴' : `Alle ${all.length} Einträge anzeigen ▾`;
+  }
+}
+
+function renderMetricEditor(m) {
+  const field = (key, label, step) => `
+    <div><label class="form-label" style="font-size:0.72rem;">${label}</label>
+      <input type="number" class="form-control" id="edit-${key}" step="${step}" value="${m[key] ?? ''}" style="padding:6px 8px;"></div>`;
+  return `
+    <div class="metric-row" style="display:block; padding:10px 0;">
+      <label class="form-label" style="font-size:0.72rem;">Datum</label>
+      <input type="date" class="form-control" id="edit-date" value="${metricDay(m)}" max="${todayStr()}" style="padding:6px 8px; margin-bottom:6px;">
+      <div class="body-grid-2">
+        ${field('weight', 'Gewicht (kg)', '0.1')}
+        ${field('waist', 'Taille (cm)', '0.5')}
+        ${field('chest', 'Brust (cm)', '0.5')}
+        ${field('arm', 'Oberarm (cm)', '0.5')}
+        ${field('neck', 'Hals (cm)', '0.5')}
+      </div>
+      <div style="display:flex; gap:8px; margin-top:8px;">
+        <button class="btn btn-primary btn-sm" style="flex:1;" onclick="saveMetric(${m.id})">Speichern</button>
+        <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="cancelEditMetric()">Abbrechen</button>
+      </div>
+    </div>`;
+}
+
+function editMetric(id) {
+  editingMetricId = id;
+  renderMetricList();
+}
+
+function cancelEditMetric() {
+  editingMetricId = null;
+  renderMetricList();
+}
+
+async function saveMetric(id) {
+  const payload = { date: document.getElementById('edit-date').value };
+  for (const mt of METRICS) payload[mt.key] = document.getElementById(`edit-${mt.key}`).value;
+  if (METRICS.every(mt => !payload[mt.key])) {
+    showToast('Mindestens ein Wert erforderlich', 'error');
+    return;
+  }
+  try {
+    const row = await API.put(`/api/body-metrics/${id}`, payload);
+    bodyMetrics = bodyMetrics.map(m => (m.id === id ? row : m));
+    sortMetrics();
+    editingMetricId = null;
+    showToast('Eintrag aktualisiert', 'success');
+    prefillWeightField();
+    renderChart();
+    renderMetricList();
+    renderNutrition();
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
 }
 
 /* ── Nutrition (Mifflin-St-Jeor, offline) ─────────────────── */
