@@ -2,7 +2,7 @@
    Common Utilities - Shared across all pages
    ============================================================ */
 
-const APP_VERSION = '4.12';
+const APP_VERSION = '4.13';
 
 // API helper
 const API = {
@@ -167,6 +167,13 @@ function playBeep(frequency = 880, duration = 0.3, volume = 0.5) {
   } catch (e) {
     console.warn('Beep error:', e);
   }
+}
+
+// Heads-up before the rest ends, so you can get into position by ear:
+// 1 short beep at 20 s left, 2 at 10 s. Lower pitch than the end signal.
+function playRestWarning(count) {
+  playBeep(660, 0.18, 0.5);
+  if (count > 1) setTimeout(() => playBeep(660, 0.18, 0.5), 300);
 }
 
 function playTimerDone() {

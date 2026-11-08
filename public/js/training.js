@@ -29,6 +29,10 @@ let restRemaining = 60;
 let restInterval = null;
 let restPaused = false;
 let restAfterLastSet = false; // if true, advance to next exercise when done
+let restOverrides = {};        // { sessionExerciseId: seconds } ±10s changes for this session
+let restWarned20 = false;      // heads-up beeps already played this rest period
+let restWarned10 = false;
+const DEFAULT_REST = 60;
 let sessionPausedMs = 0;      // total time the session timer was paused
 let sessionPauseStart = null; // when the current pause began (null = running)
 
@@ -792,9 +796,18 @@ function updateRestPreview() {
   }).catch(() => {});
 }
 
+// Rest for an exercise: today's ±10s adjustment, else the plan's value, else 60 s
+function restFor(ex) {
+  if (!ex) return DEFAULT_REST;
+  return restOverrides[ex.id] || ex.rest_seconds || DEFAULT_REST;
+}
+
 function startRestTimer(afterLastSet) {
   restAfterLastSet = afterLastSet;
+  restDuration = restFor(exercises[currentExerciseIndex]);
   restRemaining = restDuration;
+  restWarned20 = false;
+  restWarned10 = false;
   restPaused = false;
   restMinimized = false;
   setSessionPaused(false);
@@ -837,6 +850,17 @@ function restTick() {
   updateRingProgress();
   if (restMinimized) updateMiniTimer();
 
+  // Heads-up beeps (only when the rest is long enough to reach them)
+  if (!restWarned20 && restRemaining <= 20 && restRemaining > 10 && restDuration > 20) {
+    restWarned20 = true;
+    playRestWarning(1);
+  }
+  if (!restWarned10 && restRemaining <= 10 && restRemaining > 0 && restDuration > 10) {
+    restWarned10 = true;
+    restWarned20 = true;
+    playRestWarning(2);
+  }
+
   if (restRemaining <= 0) {
     clearInterval(restInterval);
     restInterval = null;
@@ -874,6 +898,12 @@ function toggleRestTimer() {
 function adjustRestDuration(delta) {
   restDuration = Math.max(10, restDuration + delta);
   restRemaining = Math.max(1, Math.min(restDuration, restRemaining + delta));
+  // Keep the change for this exercise for the rest of the session
+  const ex = exercises[currentExerciseIndex];
+  if (ex) restOverrides[ex.id] = restDuration;
+  // Moved back above a threshold -> that heads-up may sound again
+  if (restRemaining > 20) restWarned20 = false;
+  if (restRemaining > 10) restWarned10 = false;
   updateRestDisplay();
   updateRingProgress();
 }

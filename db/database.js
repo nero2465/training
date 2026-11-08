@@ -150,6 +150,8 @@ function runMigrations() {
     'ALTER TABLE workouts ADD COLUMN load_percent INTEGER',
     'ALTER TABLE body_metrics ADD COLUMN neck REAL',
     'ALTER TABLE body_metrics ADD COLUMN hip REAL',
+    // Rest time per plan exercise in seconds (NULL = app default 60 s)
+    'ALTER TABLE session_exercises ADD COLUMN rest_seconds INTEGER',
     'ALTER TABLE user_settings ADD COLUMN reduced_until TEXT',
     'ALTER TABLE user_settings ADD COLUMN reduced_percent INTEGER',
     'ALTER TABLE session_exercises ADD COLUMN scheme TEXT',

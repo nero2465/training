@@ -394,3 +394,33 @@ Commit-Historie (neueste zuerst):
 - Fix timer timezone bug, plans spinner, add upcoming exercises and quick edit
 - Add complete frontend and workout routes for training tracker app
 - Add initial backend structure for workout tracker app
+
+---
+
+## Backlog — vorgemerkt, noch NICHT umsetzen
+
+Vom Nutzer am 08.11.2026 bewusst zurückgestellt. Erst umsetzen, wenn er ausdrücklich darum bittet.
+
+### Sicherheit (App ist über DynDNS + Port 33001 per HTTP aus dem Internet erreichbar)
+- **Registrierung offen:** `/api/auth/register` erlaubt jedem ein Konto. Abschalten oder nur für eingeloggte Nutzer/Einladung.
+- **Kein HTTPS:** Passwort und Session gehen im Klartext. Synology Reverse Proxy + Let's Encrypt für `selfhost.bz` (Einrichtung auf der DS mit dem Nutzer).
+- **`SESSION_SECRET`** steht in der Compose-Datei noch auf dem Platzhalter → zufälligen Wert setzen.
+- **Kein Brute-Force-Schutz** beim Login → Sperre nach ~10 Fehlversuchen.
+
+### Kleine Ärgernisse
+- **Sessions in `/app/db`** (`server.js`, connect-sqlite3 `dir`) → gehen bei jedem Rebuild verloren, Nutzer muss neu einloggen. Nach `/data` verlegen.
+- **Wake Lock** im Training, damit das Display nicht ausgeht.
+
+### App-Gefühl (setzt HTTPS voraus)
+- **PWA:** Manifest, Icon, Vollbild auf dem Homescreen.
+- **Push-Benachrichtigung** am Pausenende bei gesperrtem Handy (iOS nur als installierte PWA mit HTTPS).
+
+### Training
+- **Neue Bestleistung** direkt beim Satz melden (Bestwerte sind schon bekannt, werden aber nicht live angezeigt).
+- **Supersätze** (zwei Übungen im Wechsel).
+- **RIR** statt drei Emoji-Bewertungen — nur falls dem Nutzer die Emojis zu grob sind.
+
+### Pflege
+- **Automatisches Backup** (nächtlich, möglichst mit Kopie außerhalb des NAS, z. B. Hyper Backup) — bisher nur beim Deploy.
+- **Zwei veraltete Tests** in `routes/workouts.test.js` (Mocks kennen neuere SQL-Abfragen nicht) reparieren.
+- **Diese CLAUDE.md** ist in großen Teilen veraltet (Deploy läuft über `deploy.sh` von `main`, viele neue Routen/Seiten) → aktualisieren.
