@@ -317,11 +317,17 @@ const SCHEME_LABELS = {
   topset_backoff:     'Top-Set + Backoff'
 };
 
+// 90 -> "1:30", 60 -> "1:00", 45 -> "45 s"
+function formatRest(sec) {
+  return sec >= 60 ? `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')} min` : `${sec} s`;
+}
+
 function createExerciseItem(ex, sessionId, idx, total) {
   const div = document.createElement('div');
   div.className = 'exercise-item';
   div.id = `se-${ex.id}`;
   div.dataset.scheme = ex.scheme || 'straight';
+  div.dataset.rest = ex.rest_seconds || '';
 
   const repsDisplay = ex.reps_min === ex.reps_max
     ? `${ex.reps_min}`
@@ -331,10 +337,14 @@ function createExerciseItem(ex, sessionId, idx, total) {
     ? ` <span style="font-size:0.68rem; background:rgba(96,165,250,0.12); color:var(--accent); border-radius:4px; padding:1px 5px;">${SCHEME_LABELS[ex.scheme] || ex.scheme}</span>`
     : '';
 
+  const restTag = ex.rest_seconds
+    ? ` <span style="font-size:0.68rem; color:var(--text-muted); white-space:nowrap;">· ⏱ ${formatRest(ex.rest_seconds)}</span>`
+    : '';
+
   div.innerHTML = `
     <div class="exercise-item-info" style="cursor:pointer;" onclick="openEditExerciseItem(${ex.id}, ${sessionId})">
       <div class="exercise-item-name">${escapeHtml(ex.name)}</div>
-      <div class="exercise-item-meta">${ex.sets} × ${repsDisplay} Wdh.${schemeTag}</div>
+      <div class="exercise-item-meta">${ex.sets} × ${repsDisplay} Wdh.${schemeTag}${restTag}</div>
     </div>
     <div class="exercise-item-actions">
       <button class="order-btn" onclick="moveExercise(${ex.id}, ${sessionId}, -1)" ${idx === 0 ? 'disabled' : ''} title="Nach oben">▲</button>
@@ -397,6 +407,7 @@ function openEditExerciseItem(seId, sessionId) {
   }
 
   const currentScheme = container.dataset.scheme || 'straight';
+  const currentRest = container.dataset.rest || '';
   const schemeOptions = Object.entries(SCHEME_LABELS).map(([val, label]) =>
     `<option value="${val}" ${val === currentScheme ? 'selected' : ''}>${label}</option>`
   ).join('');
@@ -416,6 +427,12 @@ function openEditExerciseItem(seId, sessionId) {
       <select class="form-control" id="edit-scheme-${seId}" style="width:auto; font-size:0.8rem; padding:4px 8px;">
         ${schemeOptions}
       </select>
+    </div>
+    <div style="display:flex; gap:6px; align-items:center; margin-top:6px; flex-wrap:wrap;">
+      <span class="text-muted" style="font-size:0.75rem;">Pause:</span>
+      <input type="number" class="form-control reps-input" value="${currentRest}" min="10" max="600" step="15"
+        id="edit-rest-${seId}" placeholder="60" style="width:70px;">
+      <span class="text-muted" style="font-size:0.75rem;">Sek. (leer = 60)</span>
       <button class="btn btn-primary btn-sm" onclick="saveExerciseEdit(${seId}, ${sessionId})">OK</button>
       <button class="btn btn-outline btn-sm" onclick="loadSessionExercises(${sessionId})">✕</button>
     </div>
@@ -435,13 +452,20 @@ async function saveExerciseEdit(seId, sessionId) {
     showToast('Ungültige Werte', 'error');
     return;
   }
+  const restRaw = document.getElementById(`edit-rest-${seId}`)?.value.trim() || '';
+  const restSeconds = restRaw === '' ? null : parseInt(restRaw, 10);
+  if (restSeconds !== null && (isNaN(restSeconds) || restSeconds < 10 || restSeconds > 600)) {
+    showToast('Pause: 10–600 Sekunden', 'error');
+    return;
+  }
 
   try {
     await API.put(`/api/session-exercises/${seId}`, {
       sets,
       reps_min: repsMin,
       reps_max: repsMax,
-      scheme
+      scheme,
+      rest_seconds: restSeconds
     });
     await loadSessionExercises(sessionId);
     showToast('Gespeichert', 'success');
