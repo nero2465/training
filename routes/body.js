@@ -19,7 +19,7 @@ router.get('/body-metrics', requireAuth, (req, res) => {
   res.json(rows);
 });
 
-const FIELDS = ['weight', 'waist', 'arm', 'chest', 'neck'];
+const FIELDS = ['weight', 'waist', 'arm', 'chest', 'neck', 'hip'];
 
 // '' / null -> null, number > 0 -> number, anything else -> NaN (invalid)
 function num(v) {
@@ -52,9 +52,9 @@ router.post('/body-metrics', requireAuth, (req, res) => {
 
   const db = getDb();
   const result = at
-    ? db.prepare(`INSERT INTO body_metrics (user_id, ${FIELDS.join(', ')}, measured_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    ? db.prepare(`INSERT INTO body_metrics (user_id, ${FIELDS.join(', ')}, measured_at) VALUES (?, ${FIELDS.map(() => '?').join(', ')}, ?)`)
         .run(req.session.userId, ...vals, at)
-    : db.prepare(`INSERT INTO body_metrics (user_id, ${FIELDS.join(', ')}) VALUES (?, ?, ?, ?, ?, ?)`)
+    : db.prepare(`INSERT INTO body_metrics (user_id, ${FIELDS.join(', ')}) VALUES (?, ${FIELDS.map(() => '?').join(', ')})`)
         .run(req.session.userId, ...vals);
 
   const row = db.prepare('SELECT * FROM body_metrics WHERE id = ?').get(result.lastInsertRowid);
