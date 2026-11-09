@@ -441,7 +441,7 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
 
   const settings = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(req.session.userId);
   const autoProgress = settings ? settings.auto_progress === 1 : true;
-  const exercise = db.prepare('SELECT increment_kg FROM exercises WHERE id = ?').get(se.exercise_id);
+  const exercise = db.prepare('SELECT increment_kg, bw_factor FROM exercises WHERE id = ?').get(se.exercise_id);
   const increment = (exercise && exercise.increment_kg) || 2.5;
 
   // Progression for one slot from its own last sets -> { topWeight, reason, maxWeight }
@@ -572,6 +572,14 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
   }
 
   const { lastSets, lastDate } = history;
+
+  // Pre-tick "Bodyweight" next time only where it makes sense: a real
+  // bodyweight exercise (bw_factor set), or sets that were pure bodyweight
+  // (0 kg). A stray tick on a barbell lift (80 kg squat marked BW) must not
+  // perpetuate itself — it hides the warm-up ramp and the plate calculator.
+  const isBwExercise = !!(exercise && exercise.bw_factor > 0);
+  const bwSets = lastSets.filter(set => Number(set.is_bodyweight) === 1);
+  const lastBodyweight = bwSets.length > 0 && (isBwExercise || bwSets.every(set => !set.weight));
   const maxWeight = result.maxWeight;
   const avgWeight = lastSets.reduce((sum, s) => sum + s.weight, 0) / lastSets.length;
 
@@ -591,7 +599,7 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
       sets_override: deloadSets,
       set_plan: buildSetPlan('straight', deloadWeight, deloadSets, se.reps_min, se.reps_max, increment),
       auto_progress: autoProgress,
-      last_bodyweight: lastSets.some(set => Number(set.is_bodyweight) === 1),
+      last_bodyweight: lastBodyweight,
       last_sets: lastSets,
       last_date: lastDate,
       source_label: sourceLabel
@@ -615,7 +623,7 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
     load_percent: loadPercent,
     set_plan: setPlan,
     auto_progress: autoProgress,
-    last_bodyweight: lastSets.some(set => Number(set.is_bodyweight) === 1),
+    last_bodyweight: lastBodyweight,
     last_sets: lastSets,
     last_date: lastDate,
     source_label: sourceLabel

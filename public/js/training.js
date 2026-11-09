@@ -607,6 +607,7 @@ function setBodyweightFromInput() {
   const ex = exercises[currentExerciseIndex];
   if (ex) {
     bodyweightSelections[ex.id] = currentBodyweight;
+    updateWarmupArea(ex); // un-ticking brings the warm-up ramp back
   }
   updatePlateHint();
 }
