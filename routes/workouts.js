@@ -518,12 +518,17 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
     result = progressionFor(se, history.lastSets);
   } else {
     // Fresh slot (new plan, newly added exercise, ad-hoc special workout):
-    // start from exactly what the plan that trained this exercise most
-    // recently recommends right now — its own progression already applied
-    // (e.g. 85 after a too-hard 87.5), and nothing added on top. Once this
-    // slot has its own history it progresses independently.
-    const src = db.prepare(`
-      SELECT ws.session_exercise_id as slot_id
+    // start from exactly what a plan that already trains this exercise
+    // recommends right now — its own progression applied (e.g. 85 after a
+    // too-hard 87.5), nothing added on top. Once this slot has its own
+    // history it progresses independently.
+    //
+    // WHICH plan: the same exercise is often trained with different stimuli
+    // (heavy 5x5 day vs. 3x5–8), so the source is the slot with the most
+    // similar rep range; only among equally similar slots the most recently
+    // trained one wins.
+    const candidates = db.prepare(`
+      SELECT ws.session_exercise_id as slot_id, MAX(w.started_at) as last_at
       FROM workouts w
       JOIN workout_sets ws ON ws.workout_id = w.id
       JOIN session_exercises se2 ON se2.id = ws.session_exercise_id
@@ -531,17 +536,21 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
         ${regularFilter}
         AND COALESCE(ws.exercise_id_snapshot, se2.exercise_id) = ?
         AND (ws.skipped IS NULL OR ws.skipped = 0)
-      ORDER BY w.started_at DESC
-      LIMIT 1
-    `).get(se.id, req.session.userId, ...reentryParams, se.exercise_id);
+      GROUP BY ws.session_exercise_id
+    `).all(se.id, req.session.userId, ...reentryParams, se.exercise_id);
 
-    const srcSlot = src && db.prepare(`
+    const slotInfo = db.prepare(`
       SELECT se2.*, ps.session_label, tp.name as plan_name
       FROM session_exercises se2
       JOIN plan_sessions ps ON ps.id = se2.session_id
       JOIN training_plans tp ON tp.id = ps.plan_id
       WHERE se2.id = ?
-    `).get(src.slot_id);
+    `);
+    const repDistance = c => Math.abs(c.reps_min - se.reps_min) + Math.abs(c.reps_max - se.reps_max);
+    const srcSlot = candidates
+      .map(c => ({ ...slotInfo.get(c.slot_id), last_at: c.last_at }))
+      .filter(c => c.id)
+      .sort((a, b) => repDistance(a) - repDistance(b) || String(b.last_at).localeCompare(String(a.last_at)))[0];
     history = srcSlot ? slotHistory(srcSlot.id) : null;
 
     if (history) {
