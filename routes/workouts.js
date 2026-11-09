@@ -400,82 +400,171 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
     ? new Date(new Date(lastDeloadEnd).getTime() + 7 * 86400000).toISOString()
     : null;
   // Workouts tagged with a load (since 4.10) decide by their tag; the window
-  // only applies to older, untagged ones.
+  // only applies to older, untagged ones. datetime() on both sides: started_at
+  // is "YYYY-MM-DD HH:MM:SS", the bounds are ISO ("…T…Z") — compared as raw
+  // text, ' ' sorts before 'T' and the end day would count as inside.
   const excludeReentry = lastDeloadEnd
-    ? 'AND NOT (w.load_percent IS NULL AND w.started_at >= ? AND w.started_at < ?)'
+    ? 'AND NOT (w.load_percent IS NULL AND datetime(w.started_at) >= datetime(?) AND datetime(w.started_at) < datetime(?))'
     : '';
   const reentryParams = lastDeloadEnd ? [lastDeloadEnd, reentryEnd] : [];
 
-  // Most recent completed REGULAR workout for this slot (deload + re-entry
-  // workouts are never used as a progression reference), matching the current
-  // exercise (guards against stale data from a swapped exercise).
-  const lastWorkout = db.prepare(`
-    SELECT w.id, w.started_at
-    FROM workouts w
-    JOIN workout_sets ws ON ws.workout_id = w.id
-    WHERE ws.session_exercise_id = ?
+  const regularFilter = `
       AND w.user_id = ?
       AND w.ended_at IS NOT NULL
       AND (w.is_deload IS NULL OR w.is_deload = 0)
       AND (w.load_percent IS NULL OR w.load_percent >= 100)
-      ${excludeReentry}
-      AND COALESCE(ws.exercise_id_snapshot, ?) = ?
-    ORDER BY w.started_at DESC
-    LIMIT 1
-  `).get(req.params.session_exercise_id, req.session.userId, ...reentryParams, se.exercise_id, se.exercise_id);
+      ${excludeReentry}`;
 
-  let lastSets = [];
-  let lastDate = lastWorkout ? lastWorkout.started_at : null;
-  if (lastWorkout) {
-    lastSets = db.prepare(`
+  // Most recent completed REGULAR workout of one slot (deload, reduced and
+  // re-entry workouts are never a progression reference), matching the
+  // exercise (guards against stale data from a swapped exercise).
+  function slotHistory(slotId) {
+    const w = db.prepare(`
+      SELECT w.id, w.started_at
+      FROM workouts w
+      JOIN workout_sets ws ON ws.workout_id = w.id
+      WHERE ws.session_exercise_id = ?
+        ${regularFilter}
+        AND COALESCE(ws.exercise_id_snapshot, ?) = ?
+      ORDER BY w.started_at DESC
+      LIMIT 1
+    `).get(slotId, req.session.userId, ...reentryParams, se.exercise_id, se.exercise_id);
+    if (!w) return null;
+    const sets = db.prepare(`
       SELECT weight, reps, set_number, rating, is_bodyweight, rest_pause, note
       FROM workout_sets
       WHERE workout_id = ? AND session_exercise_id = ? AND (skipped IS NULL OR skipped = 0)
       ORDER BY set_number ASC
-    `).all(lastWorkout.id, req.params.session_exercise_id);
-  } else {
-    // Fresh slot (e.g. ad-hoc special workout or newly added plan exercise):
-    // fall back to the most recent history of the SAME exercise in any slot.
-    const fallback = db.prepare(`
-      SELECT w.id, w.started_at
-      FROM workouts w
-      JOIN workout_sets ws ON ws.workout_id = w.id
-      JOIN session_exercises se2 ON se2.id = ws.session_exercise_id
-      WHERE w.user_id = ?
-        AND w.ended_at IS NOT NULL
-        AND (w.is_deload IS NULL OR w.is_deload = 0)
-        AND (w.load_percent IS NULL OR w.load_percent >= 100)
-        AND COALESCE(ws.exercise_id_snapshot, se2.exercise_id) = ?
-      ORDER BY w.started_at DESC
-      LIMIT 1
-    `).get(req.session.userId, se.exercise_id);
-
-    if (fallback) {
-      lastDate = fallback.started_at;
-      lastSets = db.prepare(`
-        SELECT ws.weight, ws.reps, ws.set_number, ws.rating, ws.is_bodyweight, ws.rest_pause, ws.note
-        FROM workout_sets ws
-        JOIN session_exercises se2 ON se2.id = ws.session_exercise_id
-        WHERE ws.workout_id = ?
-          AND COALESCE(ws.exercise_id_snapshot, se2.exercise_id) = ?
-          AND (ws.skipped IS NULL OR ws.skipped = 0)
-        ORDER BY ws.set_number ASC
-      `).all(fallback.id, se.exercise_id);
-    }
+    `).all(w.id, slotId);
+    return sets.length ? { lastSets: sets, lastDate: w.started_at } : null;
   }
-
-  if (lastSets.length === 0) {
-    return res.json({ recommended_weight: 0, last_sets: [], scheme, deload: deload.active });
-  }
-
-  const maxWeight = Math.max(...lastSets.map(s => s.weight));
-  const avgWeight = lastSets.reduce((sum, s) => sum + s.weight, 0) / lastSets.length;
 
   const settings = db.prepare('SELECT * FROM user_settings WHERE user_id = ?').get(req.session.userId);
   const autoProgress = settings ? settings.auto_progress === 1 : true;
-
   const exercise = db.prepare('SELECT increment_kg FROM exercises WHERE id = ?').get(se.exercise_id);
   const increment = (exercise && exercise.increment_kg) || 2.5;
+
+  // Progression for one slot from its own last sets -> { topWeight, reason, maxWeight }
+  function progressionFor(slot, lastSets) {
+    const slotScheme = slot.scheme || 'straight';
+    const maxWeight = Math.max(...lastSets.map(s => s.weight));
+    let topWeight = maxWeight;
+    let reason = 'last';
+
+    const ratings = lastSets.map(s => s.rating).filter(r => r !== null && r !== undefined);
+    const anyTooHard = ratings.includes(1);
+    const allTooHard = ratings.length > 0 && ratings.every(r => r === 1);
+    const allSetsDone = lastSets.length >= slot.sets;
+
+    // Straight-weight schemes plan every set at the same weight, so a set below
+    // the session's top weight means the weight had to be reduced mid-exercise.
+    // Such a set never counts as "target reached", whatever its rep count or
+    // rating — otherwise 12 reps at a lowered weight would trigger an increase
+    // from the heavier weight. (Pyramid/backoff schemes are lighter by design.)
+    const constantWeightScheme = slotScheme === 'straight' || slotScheme === 'double_progression';
+    const anyReduced = constantWeightScheme && lastSets.some(s => s.weight < maxWeight - 1e-9);
+    const allRepsMax = !anyReduced && lastSets.every(s => s.reps >= slot.reps_max);
+
+    // "zu leicht" on the LAST set (that is the set that tells how much was left
+    // in the tank — it also covers "all sets too easy") earns a double step,
+    // provided nothing was rated too hard.
+    const lastRating = lastSets[lastSets.length - 1].rating;
+    const lastTooEasy = lastRating === 3 && !anyTooHard;
+    const jump = lastTooEasy ? increment * 2 : increment;
+
+    if (loadPercent < 100) {
+      // Reduced load (post-deload re-entry, manual phase or per-workout choice):
+      // a share of the last REGULAR weight, no progression.
+      topWeight = roundPlate(maxWeight * loadPercent / 100, increment);
+      reason = deload.postDeload && loadPercent === 90 && !deload.reducedPercent ? 'post_deload' : 'reduced';
+    } else if (autoProgress) {
+      if (slotScheme === 'double_progression') {
+        // First grow reps to reps_max on ALL sets, only then add weight
+        if (allTooHard) {
+          topWeight = Math.max(0, maxWeight - increment);
+          reason = 'decrease';
+        } else if (allSetsDone && allRepsMax && !anyTooHard) {
+          topWeight = maxWeight + jump;
+          reason = lastTooEasy ? 'dp_increase_easy' : 'dp_increase';
+        } else if (anyReduced) {
+          reason = 'hold_reduced';
+        } else {
+          reason = 'dp_reps'; // hold weight, push reps
+        }
+      } else {
+        if (allTooHard) {
+          topWeight = Math.max(0, maxWeight - increment);
+          reason = 'decrease';
+        } else if (anyTooHard) {
+          reason = 'hold_hard';
+        } else if (allSetsDone && allRepsMax) {
+          topWeight = maxWeight + jump;
+          reason = lastTooEasy ? 'increase_easy' : 'increase';
+        } else if (anyReduced) {
+          reason = 'hold_reduced';
+        } else {
+          reason = 'hold';
+        }
+      }
+    }
+    return { topWeight, reason, maxWeight };
+  }
+
+  let history = slotHistory(se.id);
+  let result;        // { topWeight, reason, maxWeight }
+  let sourceLabel = null;
+
+  if (history) {
+    result = progressionFor(se, history.lastSets);
+  } else {
+    // Fresh slot (new plan, newly added exercise, ad-hoc special workout):
+    // start from exactly what the plan that trained this exercise most
+    // recently recommends right now — its own progression already applied
+    // (e.g. 85 after a too-hard 87.5), and nothing added on top. Once this
+    // slot has its own history it progresses independently.
+    const src = db.prepare(`
+      SELECT ws.session_exercise_id as slot_id
+      FROM workouts w
+      JOIN workout_sets ws ON ws.workout_id = w.id
+      JOIN session_exercises se2 ON se2.id = ws.session_exercise_id
+      WHERE ws.session_exercise_id != ?
+        ${regularFilter}
+        AND COALESCE(ws.exercise_id_snapshot, se2.exercise_id) = ?
+        AND (ws.skipped IS NULL OR ws.skipped = 0)
+      ORDER BY w.started_at DESC
+      LIMIT 1
+    `).get(se.id, req.session.userId, ...reentryParams, se.exercise_id);
+
+    const srcSlot = src && db.prepare(`
+      SELECT se2.*, ps.session_label, tp.name as plan_name
+      FROM session_exercises se2
+      JOIN plan_sessions ps ON ps.id = se2.session_id
+      JOIN training_plans tp ON tp.id = ps.plan_id
+      WHERE se2.id = ?
+    `).get(src.slot_id);
+    history = srcSlot ? slotHistory(srcSlot.id) : null;
+
+    if (history) {
+      const srcResult = progressionFor(srcSlot, history.lastSets);
+      result = {
+        topWeight: srcResult.topWeight,
+        maxWeight: srcResult.maxWeight,
+        // reduced loads keep their reason; otherwise say where it comes from
+        reason: loadPercent < 100 ? srcResult.reason : 'from_other_plan'
+      };
+      sourceLabel = srcSlot.plan_name && !/^🎯/.test(srcSlot.session_label || '')
+        ? `${srcSlot.plan_name} · ${srcSlot.session_label}`
+        : (srcSlot.session_label || null);
+    }
+  }
+
+  if (!history) {
+    return res.json({ recommended_weight: 0, last_sets: [], scheme, deload: deload.active });
+  }
+
+  const { lastSets, lastDate } = history;
+  const maxWeight = result.maxWeight;
+  const avgWeight = lastSets.reduce((sum, s) => sum + s.weight, 0) / lastSets.length;
 
   // ── Deload week: fixed % of last working weight, half the sets,
   //    no progression logic applied ──
@@ -495,71 +584,12 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
       auto_progress: autoProgress,
       last_bodyweight: lastSets.some(set => Number(set.is_bodyweight) === 1),
       last_sets: lastSets,
-      last_date: lastDate
+      last_date: lastDate,
+      source_label: sourceLabel
     });
   }
 
-  // ── Determine top working weight (progression logic) ──
-  let topWeight = maxWeight;
-  let reason = 'last';
-
-  const ratings = lastSets.map(s => s.rating).filter(r => r !== null && r !== undefined);
-  const anyTooHard = ratings.includes(1);
-  const allTooHard = ratings.length > 0 && ratings.every(r => r === 1);
-  const allSetsDone = lastSets.length >= se.sets;
-
-  // Straight-weight schemes plan every set at the same weight, so a set below
-  // the session's top weight means the weight had to be reduced mid-exercise.
-  // Such a set never counts as "target reached", whatever its rep count or
-  // rating — otherwise 12 reps at a lowered weight would trigger an increase
-  // from the heavier weight. (Pyramid/backoff schemes are lighter by design.)
-  const constantWeightScheme = scheme === 'straight' || scheme === 'double_progression';
-  const anyReduced = constantWeightScheme && lastSets.some(s => s.weight < maxWeight - 1e-9);
-  const allRepsMax = !anyReduced && lastSets.every(s => s.reps >= se.reps_max);
-
-  // "zu leicht" on the LAST set (that is the set that tells how much was left
-  // in the tank — it also covers "all sets too easy") earns a double step,
-  // provided nothing was rated too hard.
-  const lastRating = lastSets.length ? lastSets[lastSets.length - 1].rating : null;
-  const lastTooEasy = lastRating === 3 && !anyTooHard;
-  const jump = lastTooEasy ? increment * 2 : increment;
-
-  if (loadPercent < 100) {
-    // Reduced load (post-deload re-entry, manual phase or per-workout choice):
-    // a share of the last REGULAR weight, no progression.
-    topWeight = roundPlate(maxWeight * loadPercent / 100, increment);
-    reason = deload.postDeload && loadPercent === 90 && !deload.reducedPercent ? 'post_deload' : 'reduced';
-  } else if (autoProgress) {
-    if (scheme === 'double_progression') {
-      // First grow reps to reps_max on ALL sets, only then add weight
-      if (allTooHard) {
-        topWeight = Math.max(0, maxWeight - increment);
-        reason = 'decrease';
-      } else if (allSetsDone && allRepsMax && !anyTooHard) {
-        topWeight = maxWeight + jump;
-        reason = lastTooEasy ? 'dp_increase_easy' : 'dp_increase';
-      } else if (anyReduced) {
-        reason = 'hold_reduced';
-      } else {
-        reason = 'dp_reps'; // hold weight, push reps
-      }
-    } else {
-      if (allTooHard) {
-        topWeight = Math.max(0, maxWeight - increment);
-        reason = 'decrease';
-      } else if (anyTooHard) {
-        reason = 'hold_hard';
-      } else if (allSetsDone && allRepsMax) {
-        topWeight = maxWeight + jump;
-        reason = lastTooEasy ? 'increase_easy' : 'increase';
-      } else if (anyReduced) {
-        reason = 'hold_reduced';
-      } else {
-        reason = 'hold';
-      }
-    }
-  }
-
+  const { topWeight, reason } = result;
   const setPlan = buildSetPlan(scheme, topWeight, se.sets, se.reps_min, se.reps_max, increment);
 
   res.json({
@@ -578,7 +608,8 @@ router.get('/recommendations/:session_exercise_id', requireAuth, (req, res) => {
     auto_progress: autoProgress,
     last_bodyweight: lastSets.some(set => Number(set.is_bodyweight) === 1),
     last_sets: lastSets,
-    last_date: lastDate
+    last_date: lastDate,
+    source_label: sourceLabel
   });
 });
 

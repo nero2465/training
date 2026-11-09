@@ -437,6 +437,8 @@ function recommendationReasonText(rec) {
       return `<span style="color:var(--text-muted);">(halten — Wdh.-Ziel noch nicht erreicht)</span>`;
     case 'deload':
       return `<span style="color:var(--accent);">(Deload — Erholungswoche)</span>`;
+    case 'from_other_plan':
+      return `<span style="color:var(--text-muted);">(übernommen${rec.source_label ? ' aus ' + escapeHtmlTraining(rec.source_label) : ' aus anderem Plan'} — erstes Training hier)</span>`;
     case 'reduced':
       return `<span style="color:var(--accent);">(${rec.load_percent} % — reduzierte Belastung 🌱)</span>`;
     case 'post_deload':
@@ -1311,7 +1313,8 @@ function renderLastSession(rec) {
     .filter(x => x.note && x.note.trim())
     .map(x => `<span class="ls-note">Satz ${x.set_number}: „${escapeHtmlTraining(x.note.trim())}“</span>`)
     .join('');
-  el.innerHTML = `Letztes Mal${when ? ' (' + when + ')' : ''}: <span class="ls-sets">${setTxt}</span>${notes}`;
+  const from = rec.source_label ? ` in ${escapeHtmlTraining(rec.source_label)}` : '';
+  el.innerHTML = `Letztes Mal${from}${when ? ' (' + when + ')' : ''}: <span class="ls-sets">${setTxt}</span>${notes}`;
   el.style.display = 'block';
 }
 
