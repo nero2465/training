@@ -730,6 +730,43 @@ function toggleCatalog() {
   }
 }
 
+function toggleCatalogNewForm() {
+  const form = document.getElementById('catalog-new-form');
+  const btn = document.getElementById('catalog-new-btn');
+  const open = form.style.display === 'none';
+  form.style.display = open ? 'block' : 'none';
+  btn.style.display = open ? 'none' : 'block';
+  if (open) setTimeout(() => document.getElementById('catalog-new-name')?.focus(), 50);
+}
+
+// Create a strength exercise straight from the catalog (not tied to a
+// session), then open its editor for equipment, increment and technique.
+async function createCatalogExercise() {
+  const nameEl = document.getElementById('catalog-new-name');
+  const musclesEl = document.getElementById('catalog-new-muscles');
+  const name = nameEl.value.trim();
+  if (!name) { showToast('Name ist erforderlich', 'error'); return; }
+  try {
+    const ex = await API.post('/api/exercises', { name, muscle_groups: musclesEl.value.trim() });
+    if (typeof allExercises !== 'undefined' && Array.isArray(allExercises)) {
+      allExercises.push(ex);
+      allExercises.sort((a, b) => a.name.localeCompare(b.name, 'de'));
+    }
+    nameEl.value = '';
+    musclesEl.value = '';
+    toggleCatalogNewForm();
+    await loadCatalog();
+    const row = document.getElementById(`catalog-row-${ex.id}`);
+    if (row) {
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      openCatalogEdit(ex.id);
+    }
+    showToast(`„${ex.name}" angelegt`, 'success');
+  } catch (e) {
+    showToast('Fehler: ' + e.message, 'error');
+  }
+}
+
 async function loadCatalog() {
   const list = document.getElementById('catalog-list');
   if (!list) return;
