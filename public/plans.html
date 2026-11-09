@@ -170,6 +170,18 @@
           </svg>
         </div>
         <div id="catalog-body" style="display:none; background:var(--bg-card);">
+          <div style="padding:10px 12px; border-bottom:1px solid var(--border);">
+            <button class="btn btn-outline btn-sm btn-full" id="catalog-new-btn" onclick="toggleCatalogNewForm()">+ Neue Übung</button>
+            <div id="catalog-new-form" style="display:none; margin-top:8px;">
+              <input type="text" class="form-control" id="catalog-new-name" placeholder="Name, z.B. Hammer Curl am Kabel" style="font-size:0.85rem; padding:6px 8px; margin-bottom:6px;">
+              <input type="text" class="form-control" id="catalog-new-muscles" placeholder="Muskelgruppen, z.B. Bizeps, Unterarm" style="font-size:0.85rem; padding:6px 8px; margin-bottom:6px;">
+              <div style="font-size:0.72rem; color:var(--text-muted); margin-bottom:8px;">Danach öffnet sich der Editor für Gerät, Schrittweite und Technik-Hinweis.</div>
+              <div style="display:flex; gap:8px;">
+                <button class="btn btn-primary btn-sm" onclick="createCatalogExercise()">Erstellen</button>
+                <button class="btn btn-outline btn-sm" onclick="toggleCatalogNewForm()">Abbrechen</button>
+              </div>
+            </div>
+          </div>
           <div id="catalog-list"></div>
         </div>
       </div>

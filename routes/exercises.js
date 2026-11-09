@@ -64,6 +64,10 @@ router.post('/exercises', requireAuth, (req, res) => {
   if (!name || !name.trim()) return res.status(400).json({ error: 'Name erforderlich' });
 
   const db = getDb();
+  // Friendly message instead of a raw UNIQUE-constraint 500
+  const dup = db.prepare('SELECT id FROM exercises WHERE lower(name) = lower(?)').get(name.trim());
+  if (dup) return res.status(409).json({ error: `„${name.trim()}" gibt es schon im Katalog` });
+
   const result = db.prepare(`
     INSERT INTO exercises (name, muscle_groups, technique_tip, category, emom_focus, emom_base_reps, emom_reps_unit)
     VALUES (?, ?, ?, ?, ?, ?, ?)
