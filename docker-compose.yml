@@ -9,10 +9,14 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
+      # HTTPS, active once data/ssl/fullchain.pem + privkey.pem exist
+      - "3443:3443"
     environment:
       - NODE_ENV=production
       - PORT=3000
-      - SESSION_SECRET=change-this-to-a-long-random-secret
+      - HTTPS_PORT=3443
+      # Leave unset: the app then generates a random secret in /data
+      # - SESSION_SECRET=<long random string>
       - DB_PATH=/data/training.db
     volumes:
       # Persist SQLite database on Synology NAS
