@@ -403,12 +403,12 @@ Vom Nutzer am 08.11.2026 bewusst zurückgestellt. Erst umsetzen, wenn er ausdrü
 
 ### Sicherheit (App ist über DynDNS + Port 33001 per HTTP aus dem Internet erreichbar)
 - **Registrierung offen:** `/api/auth/register` erlaubt jedem ein Konto. Abschalten oder nur für eingeloggte Nutzer/Einladung.
-- **Kein HTTPS:** Passwort und Session gehen im Klartext. Synology Reverse Proxy + Let's Encrypt für `selfhost.bz` (Einrichtung auf der DS mit dem Nutzer).
-- **`SESSION_SECRET`** steht in der Compose-Datei noch auf dem Platzhalter → zufälligen Wert setzen.
+- **HTTPS:** App kann es seit 4.18 selbst (Port 3443, Zertifikat aus `/data/ssl`, das Home Assistant per Let's-Encrypt-Add-on liefert). Offen: Einrichtung beim Nutzer (HA-Kopie, Compose-Port, Router 33443 → 3443) und danach Freigabe 33001 schließen.
+- ~~`SESSION_SECRET`~~ — erledigt in 4.18: Platzhalter wird ignoriert, App erzeugt ein zufälliges Secret in `/data/session-secret`.
 - **Kein Brute-Force-Schutz** beim Login → Sperre nach ~10 Fehlversuchen.
 
 ### Kleine Ärgernisse
-- **Sessions in `/app/db`** (`server.js`, connect-sqlite3 `dir`) → gehen bei jedem Rebuild verloren, Nutzer muss neu einloggen. Nach `/data` verlegen.
+- ~~Sessions in `/app/db`~~ — erledigt in 4.18: liegen jetzt in `/data`.
 - **Wake Lock** im Training, damit das Display nicht ausgeht.
 
 ### App-Gefühl (setzt HTTPS voraus)

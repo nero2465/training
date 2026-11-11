@@ -17,8 +17,8 @@ COPY . .
 # Create DB directory
 RUN mkdir -p /app/db
 
-# Expose port
-EXPOSE 3000
+# Expose ports (HTTP, optional HTTPS)
+EXPOSE 3000 3443
 
 # Health check — hits the auth-free /api/health (200), not /api/auth/me
 # which returns 401 when logged out and would mark the container unhealthy.
